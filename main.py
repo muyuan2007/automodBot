@@ -4,11 +4,19 @@ from discord.ext import commands, tasks
 import discord
 discord.http.API_VERSION = 9
 
+d = {}
+tk = ''
+
+with open('tk.json','r+') as f:
+    info = eval(f.read())['db']
+    for key in list(info.keys()):
+        d[key] = info[key]
+
 
 async def connections():
     global connection
-    connection = await asyncpg.create_pool(host='botdb.cjcygiqxnebe.ca-central-1.rds.amazonaws.com', port=5432, user='botworker',
-                              password='DiScOrDsTeV3!2#', database='botdb')
+    connection = await asyncpg.create_pool(host=d['host'], port=d['port'], user=d['user'],
+                              password=d['pwd'], database=d['db'])
 
 
 async def get_prefix(client, message):
@@ -59,7 +67,6 @@ bot.load_extension('features.cmds')
 bot.load_extension('features.modlogging')
 bot.load_extension('features.autokickban')
 
-tk = ''
 
 @bot.event
 async def on_ready():
@@ -93,7 +100,11 @@ async def help(ctx, command=None):
             await ctx.send(embed=e)
         else:
             await ctx.send(embed=discord.Embed(title='', description=f"<:xmark:1009919995297415190> No command named '{command}'.", color=0xff2300))
-with open("tk.json",'r+') as f:
-    tk += eval(f.read())['token']
+
+
+with open('tk.json', 'r+') as f:
+    token = eval(f.read())['token']
+    tk += token
+
 asyncio.get_event_loop().run_until_complete(connections())
 bot.run(tk)

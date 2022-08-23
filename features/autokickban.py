@@ -1,5 +1,4 @@
 from discord.ext import commands, tasks
-from features import database_search
 import re
 import discord
 import requests
@@ -16,7 +15,7 @@ async def handle_send(member, embed):
 
 async def connections():
     global conn
-    conn = await asyncpg.create_pool(host='botdb.cjcygiqxnebe.ca-central-1.rds.amazonaws.com', port=5432, user='botworker',password='DiScOrDsTeV3!2#', database='botdb')
+    conn = await asyncpg.create_pool(host=d['host'], port=d['port'], user=d['user'],password=d['pwd'], database=d['db'])
 
 
 def get_time_in_seconds(time,unit):
@@ -32,6 +31,14 @@ def get_time_in_seconds(time,unit):
 
 def not_sub(text, target):
     return f" {text} " in target or target.strip() == text
+
+
+d = {}
+
+with open('tk.json','r+') as f:
+    info = eval(f.read())['db']
+    for key in list(info.keys()):
+        d[key] = info[key]
 
 
 class AutoKickBan(commands.Cog):

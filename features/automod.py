@@ -35,6 +35,14 @@ default_settings = {'messagespam': {"punishments":["Delete message","Mute","Warn
 
 'nsfwpfp': {"punishments":["Ban"],"points":0,"timeunit":"minutes","timeval":0,"role_whitelists":'{}'}}
 
+
+d = {}
+
+with open('tk.json','r+') as f:
+    info = eval(f.read())['db']
+    for key in list(info.keys()):
+        d[key] = info[key]
+
 def total_s(msg1, msg2):
     return (msg1.created_at - msg2.created_at).total_seconds()
 
@@ -580,7 +588,7 @@ def to_punish_reason(violated, ty):
 
 async def connections():
     global warn_conn
-    warn_conn = await asyncpg.create_pool(host='botdb.cjcygiqxnebe.ca-central-1.rds.amazonaws.com', port=5432, user='botworker',password='DiScOrDsTeV3!2#', database='botdb')
+    warn_conn = await asyncpg.create_pool(host=d['host'], port=d['port'], user=d['user'],password=d['pwd'], database=d['db'])
 
 
 def t(time):

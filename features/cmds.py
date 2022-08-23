@@ -27,6 +27,14 @@ default_settings = {'messagespam': {"punishments":["Delete message","Mute","Warn
 'nsfwpfp': {"punishments":["Ban"],"points":0,"timeunit":"minutes","timeval":0,"role_whitelists":'{}'}}
 
 
+d = {}
+
+with open('tk.json','r+') as f:
+    info = eval(f.read())['db']
+    for key in list(info.keys()):
+        d[key] = info[key]
+
+
 async def handle_send(member, embed):
     try:
         await member.send(embed=embed)
@@ -140,7 +148,7 @@ dbpass = 'mysecretpassword'
 
 async def connections():
     global warn_conn
-    warn_conn = await asyncpg.create_pool(host='botdb.cjcygiqxnebe.ca-central-1.rds.amazonaws.com', port=5432, user='botworker',password='DiScOrDsTeV3!2#', database='botdb')
+    warn_conn = await asyncpg.create_pool(host=d['host'], port=d['port'], user=d['user'],password=d['pwd'], database=d['db'])
 
 
 def multi_settings_to_embed(settings, autotype, ind,table):

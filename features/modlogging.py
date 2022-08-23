@@ -9,6 +9,12 @@ from features.punishing import log_infraction
 dbpass = 'mysecretpassword'
 
 
+d = {}
+with open('tk.json','r+') as f:
+    info = eval(f.read())['db']
+    for key in list(info.keys()):
+        d[key] = info[key]
+
 async def get_invite(before, after):
     old_invites = await before.invites()
     new_invites = await after.invites()
@@ -59,7 +65,7 @@ def t(time):
 
 async def connections():
     global conn
-    conn = await asyncpg.create_pool(host='botdb.cjcygiqxnebe.ca-central-1.rds.amazonaws.com', port=5432, user='botworker',password='DiScOrDsTeV3!2#', database='botdb')
+    conn = await asyncpg.create_pool(host=d['host'], port=d['port'], user=d['user'],password=d['pwd'], database=d['db'])
 
 
 update_clr = 0x5797f7
