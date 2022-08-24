@@ -11,7 +11,7 @@ from nltk.corpus import stopwords
 import string
 
 script_dir = os.getcwd()
-data = pd.read_csv('features/automodBot/features/twitter.csv')
+data = pd.read_csv('features/twitter.csv')
 
 data["labels"] = data["class"].map({0: "Hate Speech", 1: "Offensive Language", 2: "No Hate and Offensive"})
 

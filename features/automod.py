@@ -173,7 +173,7 @@ async def message_punishments(message, guild, bot):
             final_punishments['mute_reason'].append(reason)
     settings = await msg_automod(message.guild.id)
 
-    if guild is not None and not message.author.bot:
+    if guild is not None:
         cache = list(bot.cached_messages)[::-1]
         if 'messagespam' in settings:
             message_spam_settings = settings['messagespam']
@@ -494,7 +494,7 @@ def msg_punishments(user, categories, message, content, cttype):
                                 default_punishments['ban_words'][c['title']] = []
                             default_punishments['ban_words'][c['title']].append(word)
                 for word in non_substring:
-                    if f" {word} " in content or content.strip() == word:
+                    if f" {word} " in content or content.strip() == word or content.endswith(f" {word}"):
                         if "Delete message" in cat_punishments:
                             default_punishments['delete'] = True
                         if "Mute" in cat_punishments:
@@ -654,7 +654,7 @@ async def profile_punishments(user, categories, content, type):
                                 default_punishments['ban_words'][c['title']] = []
                             default_punishments['ban_words'][c['title']].append(word)
                 for word in non_substring:
-                    if f" {word} " in content or content.strip() == word:
+                    if f" {word} " in content or content.strip() == word or content.endswith(f" {word}"):
                         if "Mute" in cat_punishments:
                             default_punishments['mute'] = default_punishments['mute'] + time(c['timeval'], c['timeunit'])
                             if c['title'] not in default_punishments['mute_words']:
@@ -718,7 +718,7 @@ async def profile_punishments(user, categories, content, type):
                                 default_punishments['ban_words'][c['title']] = []
                             default_punishments['ban_words'][c['title']].append(word)
                 for word in non_substring:
-                    if f" {word} " in content or content.strip() == word:
+                    if f" {word} " in content or content.strip() == word or content.endswith(f" {word}"):
                         if "Mute" in cat_punishments:
                             default_punishments['mute'] = default_punishments['mute'] + time(c['timeval'], c['timeunit'])
                             if c['title'] not in default_punishments['mute_words']:
@@ -944,7 +944,7 @@ class Automod(commands.Cog):
                     nsfw_pfp_settings = dict(nsfw_settings)
                 else:
                     nsfw_pfp_settings = default_settings['nsfwpfp']
-                role_whitelists = set(eval(nsfw_pfp_settings['whitelistedRoles']).values())
+                role_whitelists = set(eval(nsfw_pfp_settings['role_whitelists']).values())
                 if requests.post("https://api.deepai.org/api/nsfw-detector",data={'image': str(after.avatar),},headers={'api-key': '0c25ca40-f09f-45d2-8546-8bd867cc32fd'}).json()['output']['nsfw_score'] >= 0.9 and len(set([str(role.id) for role in member.roles]).intersection(role_whitelists)) == 0:
                     await punish_nsfw(self.bot,member,guild,nsfw_pfp_settings['punishments'],nsfw_pfp_settings,warn_conn,'having a NSFW avatar')
 

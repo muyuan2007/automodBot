@@ -30,7 +30,7 @@ def get_time_in_seconds(time,unit):
 
 
 def not_sub(text, target):
-    return f" {text} " in target or target.strip() == text
+    return f" {text} " in target or target.strip() == text or target.endswith(f" {text}")
 
 
 d = {}
