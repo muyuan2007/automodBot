@@ -29,17 +29,17 @@ async def get_prefix(client, message):
 
 
 bot = commands.Bot(command_prefix=get_prefix, case_insensitive=True, intents=discord.Intents.all(), max_messages=100000000, help_command=None, strip_after_prefix=True)
-cmds = {'warn': ['Give a member warning points', 'a!warn [member] [amount] <reason>','kick members, ban members'],
-        'unwarn': ['Remove warning points from a member', 'a!warn [member] [amount]','kick members, ban members'],
+cmds = {'warn': ['Give a member warning points', 'a!warn <member> <amount> [reason]','kick members, ban members'],
+        'unwarn': ['Remove warning points from a member', 'a!warn <member> <amount>','kick members, ban members'],
         'warns': ["Check a member's warning points.", 'a!warns [member]', 'none'],
         'mute': ['Timeout/mute a member', 'a!mute <member> <duration> [reason]', 'moderate/mute members'],
         'unmute': ['Un-timeout/unmute a member', 'a!unmute <member>', 'moderate/mute members'],
         'kick': ['Kick a member', 'a!kick <member> [reason]', 'kick members'],
         'tempban': ['Temporarily ban a member', 'a!tempban <member> <duration> [reason]', 'ban members'],
-        'ban': ['Ban a member', 'a!ban [member] <reason>', 'ban members'],
-        'unban': ['Unban a member', 'a!unban [member]', 'ban members'],
+        'ban': ['Ban a member', 'a!ban <member> [reason]>', 'ban members'],
+        'unban': ['Unban a member', 'a!unban <member>', 'ban members'],
         'amsettings': ['Check dashboard configuration settings for a certain type of setting', 'a!amsettings [table]', 'none'],
-        'purge': ['Purge messages', 'a!purge <amount>', 'manage messages'],
+        'purge': ['Purge up to 500 messages at a time', 'a!purge <amount>', 'manage messages'],
         'prefix': ['Check the current command prefix', 'a!prefix', 'none'],
         'changeprefix': ['Change the command prefix', 'a!changeprefix <prefix>', 'manage server'],
         'infractions': ["Check all of a member's infractions", 'a!infractions <member> [page]', 'none']
@@ -52,10 +52,10 @@ detailed_cmds = {'warn': ['Give a member warning points with an optional reason.
         'unmute': ["Remove a member's timeout.", 'a!unmute <member>', '`moderate/mute members`', '`a!unmute @user`'],
         'kick': ['Kick a member with an optional reason.', 'a!kick <member> [reason]', '`kick members`', '`a!kick @user persistent disobedience`\n`a!kick @user`'],
         'tempban': ['Temporarily ban a member for a duration in seconds with an optional reason.', 'a!tempban <member> <duration> [reason]', '`ban members`', '`a!tempban @user 2592000 NSFW`\n`a!tempban @user 172800`'],
-        'ban': ['Ban a member with an optional reason.', 'a!ban [member] <reason>', '`ban members`','`a!ban @user death threats`\n`a!ban @user`'],
-        'unban': ['Unban a member', 'a!unban [member]', '`ban members`', '`a!unban @user`'],
+        'ban': ['Ban a member with an optional reason.', 'a!ban <member> [reason]', '`ban members`','`a!ban @user death threats`\n`a!ban @user`'],
+        'unban': ['Unban a member', 'a!unban <member>', '`ban members`', '`a!unban @user`'],
         'amsettings': ['Check dashboard configuration settings for a certain type of setting.', 'a!amsettings [table]', 'no special permissions required', '`a!amsettings messagespam`\n`a!amsettings badwords`'],
-        'purge': ['Purge a specified number of messages.', 'a!purge <amount>', 'manage messages', '`a!purge 500`'],
+        'purge': ['Purge a specified number of messages\nEntering an amount above 500 will not purge for technical reasons.', 'a!purge <amount>', 'manage messages', '`a!purge 500`'],
         'prefix': ['Check the current command prefix.', 'a!prefix', 'no special permissions required', '`a!prefix`'],
         'changeprefix': ['Change the command prefix to a specified prefix.', 'a!changeprefix <prefix>', 'manage server', '`a!prefix $`'],
         'infractions': ["Check a member's complete infraction history(e.g., mutes, unmutes, warns, unwarns, kicks, tempbans, bans, unbans). The infraction history is split into 'pages' of up to 10 records each.\nInputting no member or page argument shows the first infraction page of the user entering the command. Inputting a member argument but no page argument shows the first infraction page of the member being checked.", 'a!infractions <member> [page]', 'no special permissions required', '`a!infractions @user 3`\n`a!infractions @user`\n`a!infractions`']
@@ -89,7 +89,7 @@ async def help(ctx, command=None):
                         inline=False)
         e.add_field(name="Dashboard link", value='https://www.amgx-bot.com')
         e.set_footer(
-            text="Arguments surrounded by greater/less than signs are required. Arguments surrounded by brackets are optional. Any duration arguments have to be inputted in seconds. The 'table' argument must be one of `modlogs`, `messagespam`, `emojispam`, `mentionspam`, `stickerspam`, `attachmentspam`, `linkspam`, `duplicatecharacters`, `duplicatemessages`, `linebreaks`, `toomanycaps`, `invites`, `selfbot`, `nsfwcontent`, `hatespeech`, `badwords`, `badlinks`, `badnicks`, `badnames`, `badstatuses`, `nsfwpfp`, `autopunish`, `autokickban`, or `automodgeneral`. For the 'unwarn' command, enter 0 as the argument to remove all infraction points.")
+            text="Arguments surrounded by greater/less than signs are required. \nArguments surrounded by brackets are optional. \nAny duration arguments have to be inputted in seconds. \nThe 'table' argument must be one of 'modlogs', 'messagespam', 'emojispam', 'mentionspam', 'stickerspam', 'attachmentspam', 'linkspam', 'duplicatecharacters', 'duplicatemessages', 'linebreaks', 'toomanycaps', 'invites', 'selfbot', 'nsfwcontent', 'hatespeech', 'badwords', 'badlinks', 'badnicks', 'badnames', 'badstatuses', 'nsfwpfp', 'autopunish', 'autokickban', or 'automodgeneral'. \nFor the 'unwarn' command, enter 0 as the argument to remove all infraction points.")
         await ctx.send(embed=e)
     else:
         if command in detailed_cmds:
@@ -108,3 +108,4 @@ with open('tk.json', 'r+') as f:
 
 asyncio.get_event_loop().run_until_complete(connections())
 bot.run(tk)
+

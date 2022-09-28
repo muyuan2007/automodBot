@@ -6,14 +6,15 @@ from discord.ext import commands
 import DiscordUtils
 import asyncpg
 from features.punishing import log_infraction
+
 dbpass = 'mysecretpassword'
 
-
 d = {}
-with open('tk.json','r+') as f:
+with open('tk.json', 'r+') as f:
     info = eval(f.read())['db']
     for key in list(info.keys()):
         d[key] = info[key]
+
 
 async def get_invite(before, after):
     old_invites = await before.invites()
@@ -63,9 +64,11 @@ def t(time):
 
     return ', '.join(actual)
 
+
 async def connections():
     global conn
-    conn = await asyncpg.create_pool(host=d['host'], port=d['port'], user=d['user'],password=d['pwd'], database=d['db'])
+    conn = await asyncpg.create_pool(host=d['host'], port=d['port'], user=d['user'], password=d['pwd'],
+                                     database=d['db'])
 
 
 update_clr = 0x5797f7
@@ -73,6 +76,20 @@ add_clr = 0x78ff9c
 remove_clr = 0xff3d3d
 punish_clr = 0xbf1408
 unpunish_clr = 0x68f286
+log_actions = {"Message Events": ["Message Deleted", "Message Edited", "Message Bulk Deletion"], "Member Events": [
+    "Username Changed", "Avatar Changed", "Custom Status Changed", "Nickname Changed", "Roles Changed", "Member Joined",
+    "Member Left"], "Moderation Events": ["Member Warned", "Infraction Removed", "Member Muted", "Member Unmuted",
+                                          "Member Kicked", "Member Tempbanned",
+                                          "Member Banned", "Member Unbanned"],
+               "Server Changes": ["Emoji Added", "Emoji Updated", "Emoji Deleted", "Channel Created", "Channel Updated",
+                                  "Channel Deleted"
+                   , "Role Created", "Role Updated", "Role Deleted", "Server Name Changed", "Server Icon Changed",
+                                  "Discovery Splash Changed", "AFK Channel Changed", "System Channel Changed",
+                                  "Default Notifications Changed", "AFK Timeout Changed", "Bot Added",
+                                  "Bot Removed", "Invite Splash Changed", "Banner Changed", "Explicit Filter Changed",
+                                  "Verification Level Changed", "Invite Created", "Invite Deleted", "MFA Changed",
+                                  "Server Owner Changed"], "Voice Channel Events": ["Member Joined VC",
+                                                                                    "Member Left VC", "Member Moved"]}
 
 
 class MessageLog(commands.Cog):
@@ -84,66 +101,78 @@ class MessageLog(commands.Cog):
 
         settings = await conn.fetchrow('SELECT * FROM modlogs WHERE guild_id=$1', after.guild.id)
 
-        if settings is not None and not (before.content == '' or after.content == ''):
+        if settings is not None:
             message_log_channel = dict(settings)['message_channel']
             actions = dict(settings)['message_actions']
-            if isinstance(message_log_channel,
-                          int) and 'Message Edited' in actions:
-                ch = self.bot.get_channel(message_log_channel)
-                embed = discord.Embed(title=f"Message edited in #{self.bot.get_channel(before.channel.id)}",
-                                      description=f"**Old message:** {before.content}\n**New message:** {after.content}\n",color=update_clr)
-                url = ''
-                if str(after.author.avatar) != 'None':
-                    url += str(after.author.avatar)
-                else:
-                    url += 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQY-apNmlwrLUW0vk44GvoQd513FynuObVCo-p8Yb0KYQ&s'
-                embed.set_author(name=str(after.author), icon_url=url)
-                embed.set_footer(
-                    text=f"Message ID: {after.id} · {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S')}")
-                await ch.send(embed=embed)
+        else:
+            message_log_channel = None
+            actions = log_actions['Message Events']
+        if isinstance(message_log_channel,
+                      int) and 'Message Edited' in actions and before.content != after.content:
+            ch = self.bot.get_channel(message_log_channel)
+            embed = discord.Embed(title=f"Message edited in #{self.bot.get_channel(before.channel.id)}",
+                                  description=f"**Old message:** {before.content}\n**New message:** {after.content}\n",
+                                  color=update_clr)
+            url = ''
+            if str(after.author.avatar) != 'None':
+                url += str(after.author.avatar)
+            else:
+                url += 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQY-apNmlwrLUW0vk44GvoQd513FynuObVCo-p8Yb0KYQ&s'
+            embed.set_author(name=str(after.author), icon_url=url)
+            embed.set_footer(
+                text=f"Message ID: {after.id} · {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S')}")
+            await ch.send(embed=embed)
 
     @commands.Cog.listener()
     async def on_message_delete(self, message):
         settings = await conn.fetchrow('SELECT * FROM modlogs WHERE guild_id=$1', message.guild.id)
 
-        if settings is not None and message.content != '':
+        if settings is not None:
             message_log_channel = dict(settings)['message_channel']
             actions = dict(settings)['message_actions']
+        else:
+            message_log_channel = None
+            actions = log_actions['Message Events']
 
-            if isinstance(message_log_channel, int) and 'Message Deleted' in actions:
-                ch = self.bot.get_channel(message_log_channel)
-                embed = discord.Embed(title=f"Message deleted in #{self.bot.get_channel(message.channel.id)}",
-                                      description=f"**Content:** {message.content}",color=remove_clr)
-                url = ''
-                if str(message.author.avatar) != 'None':
-                    url += str(message.author.avatar)
-                else:
-                    url += 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQY-apNmlwrLUW0vk44GvoQd513FynuObVCo-p8Yb0KYQ&s'
-                embed.set_author(name=str(message.author), icon_url=url)
-                embed.set_footer(
-                    text=f"Message ID: {message.id} · {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S')}")
-                await ch.send(embed=embed)
+        if isinstance(message_log_channel, int) and 'Message Deleted' in actions and message.content != '':
+            ch = self.bot.get_channel(message_log_channel)
+            embed = discord.Embed(title=f"Message deleted in #{self.bot.get_channel(message.channel.id)}",
+                                  description=f"**Content:** {message.content}", color=remove_clr)
+            url = ''
+            if str(message.author.avatar) != 'None':
+                url += str(message.author.avatar)
+            else:
+                url += 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQY-apNmlwrLUW0vk44GvoQd513FynuObVCo-p8Yb0KYQ&s'
+            embed.set_author(name=str(message.author), icon_url=url)
+            embed.set_footer(
+                text=f"Message ID: {message.id} · {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S')}")
+            await ch.send(embed=embed)
 
     @commands.Cog.listener()
     async def on_raw_bulk_message_delete(self, payload):
         settings = await conn.fetchrow('SELECT * FROM modlogs WHERE guild_id=$1', payload.guild_id)
-        if settings is not None and len(payload.cached_messages) > 0:
+        if settings is not None:
             message_log_channel = dict(settings)['message_channel']
             actions = dict(settings)['message_actions']
-            messages = get_content(payload.cached_messages)
-            user = (await self.bot.get_guild(payload.guild_id).audit_logs(limit=1).flatten())[0].user
-            if isinstance(message_log_channel, int) and 'Message Bulk Deletion' in actions:
-                channel = self.bot.get_channel(payload.channel_id)
-                ch = self.bot.get_channel(message_log_channel)
-                string = ""
-                for message in messages:
-                    string += f"{message}\n"
-                embed = discord.Embed(title=f"Messages bulk deleted in #{channel}",color=remove_clr)
-                embed.add_field(name="Deleted messages:", value=string)
-                embed.add_field(name="Deleted by:",
-                                value=f"{user}({user.mention})")
-                embed.set_footer(text=f"Channel ID: {payload.channel_id} · {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S')}")
-                await ch.send(embed=embed)
+        else:
+            message_log_channel = None
+            actions = log_actions['Message Events']
+        messages = get_content(payload.cached_messages)
+        user = (await self.bot.get_guild(payload.guild_id).audit_logs(limit=1).flatten())[0].user
+        if isinstance(message_log_channel, int) and 'Message Bulk Deletion' in actions and len(
+                payload.cached_messages) > 0:
+            channel = self.bot.get_channel(payload.channel_id)
+            ch = self.bot.get_channel(message_log_channel)
+            string = ""
+            for message in messages:
+                string += f"{message}\n"
+            embed = discord.Embed(title=f"Messages bulk deleted in #{channel}", color=remove_clr)
+            embed.add_field(name="Deleted messages:", value=string)
+            embed.add_field(name="Deleted by:",
+                            value=f"{user}({user.mention})")
+            embed.set_footer(
+                text=f"Channel ID: {payload.channel_id} · {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S')}")
+            await ch.send(embed=embed)
 
 
 class MemberLog(commands.Cog):
@@ -156,13 +185,46 @@ class MemberLog(commands.Cog):
     @commands.Cog.listener()
     async def on_member_update(self, before, after):
         settings = await conn.fetchrow('SELECT * FROM modlogs WHERE guild_id=$1', before.guild.id)
+        who_did_it = (await after.guild.audit_logs(limit=1).flatten())[0].user
         if settings is not None:
-            who_did_it = (await after.guild.audit_logs(limit=1).flatten())[0].user
             member_log_channel = dict(settings)['member_channel']
             actions = dict(settings)['member_actions']
-            if before.nick != after.nick and isinstance(member_log_channel, int) and "Nickname Changed" in actions:
-                embed = discord.Embed(title="Nickname changed",
-                                      description=f"**Old nickname:** {before.nick}\n**New nickname:** {after.nick}\n**Changed by:** {who_did_it} ({who_did_it.mention})", color=update_clr)
+        else:
+            member_log_channel = None
+            actions = log_actions['Member Events']
+        if before.nick != after.nick and isinstance(member_log_channel, int) and "Nickname Changed" in actions:
+            embed = discord.Embed(title="Nickname changed",
+                                  description=f"**Old nickname:** {before.display_name}\n**New nickname:** {after.display_name}\n**Changed by:** {who_did_it} ({who_did_it.mention})",
+                                  color=update_clr)
+            embed.set_footer(
+                text=f"Member ID: {after.id} · {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S')}")
+            url = ''
+            if str(after.avatar) != 'None':
+                url += str(after.avatar)
+            else:
+                url += 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQY-apNmlwrLUW0vk44GvoQd513FynuObVCo-p8Yb0KYQ&s'
+            embed.set_author(name=str(after), icon_url=url)
+            await self.bot.get_channel(member_log_channel).send(embed=embed)
+
+        if before.roles != after.roles and isinstance(member_log_channel, int) and "Roles Changed" in actions:
+            if len(before.roles) < len(after.roles):
+                added_role = [role for role in after.roles if role not in before.roles][0].mention
+                embed = discord.Embed(title="Role added",
+                                      description=f"**Role added:** {added_role}\n**Added by:** {who_did_it} ({who_did_it.mention})",
+                                      color=update_clr)
+                embed.set_footer(text=f"{datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S')}")
+                url = ''
+                if str(after.avatar) != 'None':
+                    url += str(after.avatar)
+                else:
+                    url += 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQY-apNmlwrLUW0vk44GvoQd513FynuObVCo-p8Yb0KYQ&s'
+                embed.set_author(name=str(after), icon_url=url)
+                await self.bot.get_channel(member_log_channel).send(embed=embed)
+            else:
+                removed_role = [role for role in before.roles if role not in after.roles][0].mention
+                embed = discord.Embed(title="Role removed",
+                                      description=f"**Role removed:** {removed_role}\n**Removed by:** {who_did_it} ({(await after.guild.audit_logs(limit=1).flatten())[0].user.mention})",
+                                      color=update_clr)
                 embed.set_footer(
                     text=f"Member ID: {after.id} · {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S')}")
                 url = ''
@@ -173,33 +235,6 @@ class MemberLog(commands.Cog):
                 embed.set_author(name=str(after), icon_url=url)
                 await self.bot.get_channel(member_log_channel).send(embed=embed)
 
-            if before.roles != after.roles and isinstance(member_log_channel, int) and "Roles Changed" in actions:
-                if len(before.roles) < len(after.roles):
-                    added_role = [role for role in after.roles if role not in before.roles][0].mention
-                    embed = discord.Embed(title="Role added",
-                                          description=f"**Role added:** {added_role}\n**Added by:** {who_did_it} ({who_did_it.mention})",color=update_clr)
-                    embed.set_footer(text=f"{datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S')}")
-                    url = ''
-                    if str(after.avatar) != 'None':
-                        url += str(after.avatar)
-                    else:
-                        url += 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQY-apNmlwrLUW0vk44GvoQd513FynuObVCo-p8Yb0KYQ&s'
-                    embed.set_author(name=str(after), icon_url=url)
-                    await self.bot.get_channel(member_log_channel).send(embed=embed)
-                else:
-                    removed_role = [role for role in before.roles if role not in after.roles][0].mention
-                    embed = discord.Embed(title="Role removed",
-                                          description=f"**Role removed:** {removed_role}\n**Removed by:** {who_did_it} ({(await after.guild.audit_logs(limit=1).flatten())[0].user.mention})",color=update_clr)
-                    embed.set_footer(
-                        text=f"Member ID: {after.id} · {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S')}")
-                    url = ''
-                    if str(after.avatar) != 'None':
-                        url += str(after.avatar)
-                    else:
-                        url += 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQY-apNmlwrLUW0vk44GvoQd513FynuObVCo-p8Yb0KYQ&s'
-                    embed.set_author(name=str(after), icon_url=url)
-                    await self.bot.get_channel(member_log_channel).send(embed=embed)
-
     @commands.Cog.listener()
     async def on_user_update(self, before, after):
         for guild in after.mutual_guilds:
@@ -207,25 +242,29 @@ class MemberLog(commands.Cog):
             if settings is not None:
                 member_log_channel = dict(settings)['member_channel']
                 actions = dict(settings)['member_actions']
-                if before.name != after.name and "Username Changed" in actions and isinstance(member_log_channel, int):
-                    embed = discord.Embed(title="Name changed",
-                                          description=f"**Old username:** {before.name}\n**New username:** {after.name}",color=update_clr)
-                    embed.set_footer(text=f"{datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S')}")
-                    url = ''
-                    if str(after.avatar) != 'None':
-                        url += str(after.avatar)
-                    else:
-                        url += 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQY-apNmlwrLUW0vk44GvoQd513FynuObVCo-p8Yb0KYQ&s'
-                    embed.set_author(name=str(after), icon_url=url)
-                    await self.bot.get_channel(member_log_channel).send(embed=embed)
-                if str(before.avatar) != str(after.avatar) and "Avatar Changed" in actions and isinstance(
-                        member_log_channel, int):
-                    embed = discord.Embed(title="Avatar changed",color=update_clr)
-                    embed.set_footer(
-                        text=f"Member ID: {after.id} · {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S')}")
-                    embed.set_image(url=str(after.avatar))
-                    embed.set_author(name=str(after))
-                    await self.bot.get_channel(member_log_channel).send(embed=embed)
+            else:
+                member_log_channel = None
+                actions = log_actions['Member Events']
+            if before.name != after.name and "Username Changed" in actions and isinstance(member_log_channel, int):
+                embed = discord.Embed(title="Name changed",
+                                      description=f"**Old username:** {before.name}\n**New username:** {after.name}",
+                                      color=update_clr)
+                embed.set_footer(text=f"{datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S')}")
+                url = ''
+                if str(after.avatar) != 'None':
+                    url += str(after.avatar)
+                else:
+                    url += 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQY-apNmlwrLUW0vk44GvoQd513FynuObVCo-p8Yb0KYQ&s'
+                embed.set_author(name=str(after), icon_url=url)
+                await self.bot.get_channel(member_log_channel).send(embed=embed)
+            if str(before.avatar) != str(after.avatar) and "Avatar Changed" in actions and isinstance(
+                    member_log_channel, int):
+                embed = discord.Embed(title="Avatar changed", color=update_clr)
+                embed.set_footer(
+                    text=f"Member ID: {after.id} · {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S')}")
+                embed.set_image(url=str(after.avatar))
+                embed.set_author(name=str(after))
+                await self.bot.get_channel(member_log_channel).send(embed=embed)
 
     @commands.Cog.listener()
     async def on_member_join(self, member):
@@ -236,45 +275,51 @@ class MemberLog(commands.Cog):
             server_channel = dict(settings)['server_channel']
             member_actions = dict(settings)['member_actions']
             member_channel = dict(settings)['member_channel']
-            if member.bot and isinstance(server_channel, int) and "Bot Added" in server_actions:
-                adder = (await member.guild.audit_logs(limit=1, action=discord.AuditLogAction.bot_add).flatten())[
-                    0].user
-                info = {'Added by': f"{adder} ({adder.mention})"}
-                embed = discord.Embed(title="Bot added", color=add_clr)
-                description = ''
-                for piece in info:
-                    description += f"**{piece}:** {info[piece]}\n"
-                embed.description = description
-                url = ''
-                if str(member.avatar) != 'None':
-                    url += str(member.avatar)
-                else:
-                    url += 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQY-apNmlwrLUW0vk44GvoQd513FynuObVCo-p8Yb0KYQ&s'
-                embed.set_author(name=str(member), icon_url=url)
-                embed.set_footer(text=f"Bot ID: {member.id} · {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S')}")
-                await self.bot.get_channel(server_channel).send(embed=embed)
-            if not member.bot and isinstance(member_channel, int) and "Member Joined" in member_actions:
-                inv_info = await self.tracker.fetch_inviter(member)
-                inviter = inv_info[1]
-                invite = inv_info[0]
-                info = {'Created': t(
-                    int((datetime.datetime.now(timezone.utc) - member.created_at).total_seconds())),
-                        'Invited by': f"{inviter} ({inviter.mention})", 'Code used': invite.code,
-                        'Number of times code has been used': invite.uses+1}
-                embed = discord.Embed(title="Member joined", color=add_clr)
-                description = ''
-                for piece in info:
-                    description += f"**{piece}:** {info[piece]}\n"
-                embed.description = description
-                url = ''
-                if str(member.avatar) != 'None':
-                    url += str(member.avatar)
-                else:
-                    url += 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQY-apNmlwrLUW0vk44GvoQd513FynuObVCo-p8Yb0KYQ&s'
-                embed.set_author(name=str(member), icon_url=url)
-                embed.set_footer(
-                    text=f"Member ID: {member.id} · {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S')}")
-                await self.bot.get_channel(member_channel).send(embed=embed)
+        else:
+            member_channel = None
+            member_actions = log_actions['Member Events']
+            server_channel = None
+            server_actions = log_actions['Server Changes']
+
+        if member.bot and isinstance(server_channel, int) and "Bot Added" in server_actions:
+            adder = (await member.guild.audit_logs(limit=1, action=discord.AuditLogAction.bot_add).flatten())[
+                0].user
+            info = {'Added by': f"{adder} ({adder.mention})"}
+            embed = discord.Embed(title="Bot added", color=add_clr)
+            description = ''
+            for piece in info:
+                description += f"**{piece}:** {info[piece]}\n"
+            embed.description = description
+            url = ''
+            if str(member.avatar) != 'None':
+                url += str(member.avatar)
+            else:
+                url += 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQY-apNmlwrLUW0vk44GvoQd513FynuObVCo-p8Yb0KYQ&s'
+            embed.set_author(name=str(member), icon_url=url)
+            embed.set_footer(text=f"Bot ID: {member.id} · {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S')}")
+            await self.bot.get_channel(server_channel).send(embed=embed)
+        if not member.bot and isinstance(member_channel, int) and "Member Joined" in member_actions:
+            inv_info = await self.tracker.fetch_inviter(member)
+            inviter = inv_info[1]
+            invite = inv_info[0]
+            info = {'Created': t(
+                int((datetime.datetime.now(timezone.utc) - member.created_at).total_seconds())),
+                'Invited by': f"{inviter} ({inviter.mention})", 'Code used': invite.code,
+                'Number of times code has been used': invite.uses + 1}
+            embed = discord.Embed(title="Member joined", color=add_clr)
+            description = ''
+            for piece in info:
+                description += f"**{piece}:** {info[piece]}\n"
+            embed.description = description
+            url = ''
+            if str(member.avatar) != 'None':
+                url += str(member.avatar)
+            else:
+                url += 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQY-apNmlwrLUW0vk44GvoQd513FynuObVCo-p8Yb0KYQ&s'
+            embed.set_author(name=str(member), icon_url=url)
+            embed.set_footer(
+                text=f"Member ID: {member.id} · {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S')}")
+            await self.bot.get_channel(member_channel).send(embed=embed)
 
     @commands.Cog.listener()
     async def on_member_remove(self, member):
@@ -282,65 +327,28 @@ class MemberLog(commands.Cog):
         if settings is not None:
             member_log_channel = dict(settings)['member_channel']
             actions = dict(settings)['member_actions']
-            if "Member Left" in actions and isinstance(member_log_channel, int):
+        else:
+            member_log_channel = None
+            actions = log_actions['Member Events']
+        if "Member Left" in actions and isinstance(member_log_channel, int):
 
-                leave_event = [e for e in
-                               (await member.guild.audit_logs(limit=1, action=discord.AuditLogAction.kick).flatten()) if
-                               e.target.id == member.id]
+            leave_event = [e for e in
+                           (await member.guild.audit_logs(limit=1, action=discord.AuditLogAction.kick).flatten()) if
+                           e.target.id == member.id]
 
-                if len(leave_event) == 0:
-                    if not member.bot:
-                        embed = discord.Embed(title="", description="", color=remove_clr)
-                        url = ''
-                        if str(member.avatar) != 'None':
-                            url += str(member.avatar)
-                        else:
-                            url += 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQY-apNmlwrLUW0vk44GvoQd513FynuObVCo-p8Yb0KYQ&s'
-                        embed.set_author(name=str(member), icon_url=url)
-                        embed.set_footer(text=f"Member ID: {member.id} · {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S')}")
-                        embed.title = "Member left"
-                        await self.bot.get_channel(member_log_channel).send(embed=embed)
-
-    @commands.Cog.listener()
-    async def on_presence_update(self, before, after):
-        if not after.bot:
-            settings = await conn.fetchrow('SELECT * FROM modlogs WHERE guild_id=$1', after.guild.id)
-            if settings is not None:
-                embed = discord.Embed(title="Custom status changed", color=update_clr)
-                member_log_channel = dict(settings)['member_channel']
-                actions = dict(settings)['member_actions']
-                old_status = ''
-                new_status = ''
-                if isinstance(member_log_channel, int) and "Custom Status Changed" in actions:
-                    if len([activity for activity in after.activities if
-                            isinstance(activity, discord.CustomActivity)]) > 0:
-                        if len([activity for activity in before.activities if
-                                isinstance(activity, discord.CustomActivity)]) > 0:
-                            old_status += [activity for activity in before.activities if
-                                           isinstance(activity, discord.CustomActivity)][0].name
-                            new_status += \
-                            [activity for activity in after.activities if isinstance(activity, discord.CustomActivity)][
-                                0].name
-                        else:
-                            new_status += \
-                            [activity for activity in after.activities if isinstance(activity, discord.CustomActivity)][
-                                0].name
-
-                    else:
-                        if len([activity for activity in before.activities if
-                                isinstance(activity, discord.CustomActivity)]) > 0:
-                            old_status += [activity for activity in before.activities if
-                                           isinstance(activity, discord.CustomActivity)][0].name
+            if len(leave_event) == 0:
+                if not member.bot:
+                    embed = discord.Embed(title="", description="", color=remove_clr)
                     url = ''
-                    if str(after.avatar) != 'None':
-                        url += str(after.avatar)
+                    if str(member.avatar) != 'None':
+                        url += str(member.avatar)
                     else:
                         url += 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQY-apNmlwrLUW0vk44GvoQd513FynuObVCo-p8Yb0KYQ&s'
-                    embed.set_author(name=str(after), icon_url=url)
-                    embed.description = f"**Old status:** {old_status}\n**New status:** {new_status}"
-                    embed.set_footer(text=f"Member ID: {after.id} · {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S')}")
-                    if old_status != new_status and str(after.status) != 'offline' and str(before.status) != 'offline':
-                        await self.bot.get_channel(member_log_channel).send(embed=embed)
+                    embed.set_author(name=str(member), icon_url=url)
+                    embed.set_footer(
+                        text=f"Member ID: {member.id} · {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S')}")
+                    embed.title = "Member left"
+                    await self.bot.get_channel(member_log_channel).send(embed=embed)
 
 
 class Moderation(commands.Cog):
@@ -357,22 +365,31 @@ class Moderation(commands.Cog):
             if settings is not None:
                 mod_channel = dict(settings)['moderation_channel']
                 actions = dict(settings)['moderations']
-                if "Member Kicked" in actions and isinstance(mod_channel, int):
+            else:
+                mod_channel = None
+                actions = log_actions['Moderation Events']
+            if "Member Kicked" in actions and isinstance(mod_channel, int):
+                if (datetime.datetime.now(timezone.utc) - leave_event[0].created_at).total_seconds() <= 1:
+                    embed = discord.Embed(title="Member kicked",
+                                          description=f"**Reason:** {leave_event[0].reason}\n**Moderator:** {leave_event[0].user} ({leave_event[0].user.mention})",
+                                          color=punish_clr)
+                    url = ''
+                    if str(member.avatar) != 'None':
+                        url += str(member.avatar)
+                    else:
+                        url += 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQY-apNmlwrLUW0vk44GvoQd513FynuObVCo-p8Yb0KYQ&s'
+                    embed.set_author(name=str(member), icon_url=url)
+                    embed.set_footer(
+                        text=f"Member ID: {member.id} · {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S')}")
+                    await self.bot.get_channel(mod_channel).send(embed=embed)
+            if not leave_event[0].user.bot and not member.bot:
+                await member.send(
+                    embed=discord.Embed(title=f"You've been banned from {member.guild}",
+                                        description=f"**Moderator: ** {leave_event[0].user}\n**Reason: **{leave_event[0].reason}",
+                                        color=0xf54254))
+            await log_infraction(member, member.guild, {"type": "Kick", "Reason": leave_event[0].reason,
+                                                        "Moderator": str(leave_event[0].user)}, conn)
 
-
-
-                        if (datetime.datetime.now(timezone.utc) - leave_event[0].created_at).total_seconds() <= 1:
-                            embed = discord.Embed(title="Member kicked",
-                                                  description=f"**Reason:** {leave_event[0].reason}\n**Moderator:** {leave_event[0].user} ({leave_event[0].user.mention})", color=punish_clr)
-                            url = ''
-                            if str(member.avatar) != 'None':
-                                url += str(member.avatar)
-                            else:
-                                url += 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQY-apNmlwrLUW0vk44GvoQd513FynuObVCo-p8Yb0KYQ&s'
-                            embed.set_author(name=str(member), icon_url=url)
-                            embed.set_footer(text=f"Member ID: {member.id} · {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S')}")
-                            await self.bot.get_channel(mod_channel).send(embed=embed)
-        await log_infraction(member, member.guild, {"type": "Kick", "Reason": leave_event[0].reason, "Moderator": str(leave_event[0].user)}, conn)
 
     @commands.Cog.listener()
     async def on_member_ban(self, guild, user):
@@ -381,37 +398,15 @@ class Moderation(commands.Cog):
         if settings is not None:
             mod_channel = dict(settings)['moderation_channel']
             actions = dict(settings)['moderations']
+        else:
+            mod_channel = None
+            actions = log_actions['Moderation Events']
 
-            if "Member Banned" in actions and isinstance(mod_channel, int):
-                if not ban_event.user.bot and not user.bot:
-                    embed = discord.Embed(title="Member banned",
-                                          description=f"**Reason:** {ban_event.reason}\n**Moderator:** {ban_event.user} ({ban_event.user.mention})", color=punish_clr)
-                    url = ''
-                    if str(user.avatar) != 'None':
-                        url += str(user.avatar)
-                    else:
-                        url += 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQY-apNmlwrLUW0vk44GvoQd513FynuObVCo-p8Yb0KYQ&s'
-                    embed.set_author(name=str(user), icon_url=url)
-                    embed.set_footer(
-                        text=f"Member ID: {user.id} · {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S')}")
-                    await self.bot.get_channel(mod_channel).send(embed=embed)
-                    await conn.execute('DELETE FROM user_infraction_points WHERE memberkey=$1', f"{guild.id}_{user.id}")
-        await log_infraction(user, guild, {"type": "Ban", "Reason": ban_event.reason, "Moderator": str(ban_event.user)}, conn)
-
-
-
-
-    @commands.Cog.listener()
-    async def on_member_unban(self, guild, user):
-        unban_event = (await guild.audit_logs(limit=1).flatten())[0]
-        settings = await conn.fetchrow('SELECT * FROM modlogs WHERE guild_id=$1', guild.id)
-        if settings is not None:
-            mod_channel = dict(settings)['moderation_channel']
-            actions = dict(settings)['moderations']
-            if "Member Unbanned" in actions and isinstance(mod_channel, int) and not user.bot:
-
-                embed = discord.Embed(title="Member unbanned",
-                                      description=f"**Moderator:** {unban_event.user} ({unban_event.user.mention})", color=unpunish_clr)
+        if "Member Banned" in actions and isinstance(mod_channel, int):
+            if not ban_event.user.bot and not user.bot:
+                embed = discord.Embed(title="Member banned",
+                                      description=f"**Reason:** {ban_event.reason}\n**Moderator:** {ban_event.user} ({ban_event.user.mention})",
+                                      color=punish_clr)
                 url = ''
                 if str(user.avatar) != 'None':
                     url += str(user.avatar)
@@ -421,11 +416,43 @@ class Moderation(commands.Cog):
                 embed.set_footer(
                     text=f"Member ID: {user.id} · {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S')}")
                 await self.bot.get_channel(mod_channel).send(embed=embed)
+                await conn.execute('DELETE FROM user_infraction_points WHERE memberkey=$1', f"{guild.id}_{user.id}")
+        if not ban_event.user.bot and not user.bot:
+            await user.send(
+                embed=discord.Embed(title=f"You've been banned from {guild}",
+                                    description=f"**Moderator: ** {ban_event.user}\n**Reason: **{ban_event.reason}", color=0xf54254))
+        await log_infraction(user, guild, {"type": "Ban", "Reason": ban_event.reason, "Moderator": str(ban_event.user)},
+                             conn)
+
+    @commands.Cog.listener()
+    async def on_member_unban(self, guild, user):
+        unban_event = (await guild.audit_logs(limit=1).flatten())[0]
+        settings = await conn.fetchrow('SELECT * FROM modlogs WHERE guild_id=$1', guild.id)
+        if settings is not None:
+            mod_channel = dict(settings)['moderation_channel']
+            actions = dict(settings)['moderations']
+        else:
+            mod_channel = None
+            actions = log_actions['Moderation Events']
+        if "Member Unbanned" in actions and isinstance(mod_channel, int) and not user.bot:
+
+            embed = discord.Embed(title="Member unbanned",
+                                  description=f"**Moderator:** {unban_event.user} ({unban_event.user.mention})",
+                                  color=unpunish_clr)
+            url = ''
+            if str(user.avatar) != 'None':
+                url += str(user.avatar)
+            else:
+                url += 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQY-apNmlwrLUW0vk44GvoQd513FynuObVCo-p8Yb0KYQ&s'
+            embed.set_author(name=str(user), icon_url=url)
+            embed.set_footer(
+                text=f"Member ID: {user.id} · {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S')}")
+            await self.bot.get_channel(mod_channel).send(embed=embed)
         await log_infraction(user, guild, {"type": "Unban", "Moderator": str(unban_event.user)}, conn)
 
         await user.send(
             embed=discord.Embed(title=f"You've been unbanned from {guild}",
-                                description=f"**Moderator: ** {unban_event.user}"))
+                                description=f"**Moderator: ** {unban_event.user}",color=0x33f25c))
 
     @commands.Cog.listener()
     async def on_member_update(self, before, after):
@@ -439,22 +466,32 @@ class Moderation(commands.Cog):
                 if settings is not None:
                     mod_channel = dict(settings)['moderation_channel']
                     actions = dict(settings)['moderations']
-                    if "Member Muted" in actions and isinstance(mod_channel, int) and not event.user.bot:
+                else:
+                    mod_channel = None
+                    actions = log_actions['Moderation Events']
+                if "Member Muted" in actions and isinstance(mod_channel, int) and not event.user.bot:
 
-                        embed = discord.Embed(title="Member muted",
-                                              description=f"**Muted for:** {t(int((after.communication_disabled_until-datetime.datetime.now(tz=datetime.timezone.utc)).total_seconds()))}\n**Reason:** {event.reason}\n**Moderator:** {event.user} ({event.user.mention})", color=punish_clr)
-                        url = ''
-                        if str(after.avatar) != 'None':
-                            url += str(after.avatar)
-                        else:
-                            url += 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQY-apNmlwrLUW0vk44GvoQd513FynuObVCo-p8Yb0KYQ&s'
-                        embed.set_author(name=str(after), icon_url=url)
-                        embed.set_footer(text=f"Member ID: {after.id} · {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S')}")
-                        await self.bot.get_channel(mod_channel).send(embed=embed)
-                        await after.send(embed=discord.Embed(title=f"You've been muted in {after.guild}",
-                                                              description=f"**Duration:** {t(int((after.communication_disabled_until-datetime.datetime.now(tz=datetime.timezone.utc)).total_seconds()))}\n**Reason:** {event.reason}\n**Moderator: **{event.user}"))
+                    embed = discord.Embed(title="Member muted",
+                                          description=f"**Muted for:** {t(int((after.communication_disabled_until - datetime.datetime.now(tz=datetime.timezone.utc)).total_seconds()))}\n**Reason:** {event.reason}\n**Moderator:** {event.user} ({event.user.mention})",
+                                          color=punish_clr)
+                    url = ''
+                    if str(after.avatar) != 'None':
+                        url += str(after.avatar)
+                    else:
+                        url += 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQY-apNmlwrLUW0vk44GvoQd513FynuObVCo-p8Yb0KYQ&s'
+                    embed.set_author(name=str(after), icon_url=url)
+                    embed.set_footer(
+                        text=f"Member ID: {after.id} · {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S')}")
+                    await self.bot.get_channel(mod_channel).send(embed=embed)
+
                 if not event.user.bot:
-                    await log_infraction(after, after.guild, {"type": "Mute", "Muted for": t(int((after.communication_disabled_until-datetime.datetime.now(tz=datetime.timezone.utc)).total_seconds())), "Reason": event.reason,"Moderator": str(event.user)},conn)
+                    await after.send(embed=discord.Embed(title=f"You've been muted in {after.guild}",
+                                                         description=f"**Duration:** {t(int((after.communication_disabled_until - datetime.datetime.now(tz=datetime.timezone.utc)).total_seconds())+1)}\n**Reason:** {event.reason}\n**Moderator: **{event.user}",color=0xf54254))
+                    await log_infraction(after, after.guild, {"type": "Mute", "Muted for": t(int((
+                                                                                                             after.communication_disabled_until - datetime.datetime.now(
+                                                                                                         tz=datetime.timezone.utc)).total_seconds())),
+                                                              "Reason": event.reason, "Moderator": str(event.user)},
+                                         conn)
 
         if before.timed_out and not after.timed_out:
             au = [e for e in (await after.guild.audit_logs(limit=1).flatten()) if
@@ -465,22 +502,29 @@ class Moderation(commands.Cog):
                 if settings is not None:
                     mod_channel = dict(settings)['moderation_channel']
                     actions = dict(settings)['moderations']
-                    if "Member Unmuted" in actions and isinstance(mod_channel, int) and not event.user.bot:
+                else:
+                    mod_channel = None
+                    actions = log_actions['Moderation Events']
+                if "Member Unmuted" in actions and isinstance(mod_channel, int) and not event.user.bot:
 
-                        embed = discord.Embed(title="Member unmuted",
-                                              description=f"**Moderator:** {event.user} ({event.user.mention})", color=unpunish_clr)
-                        url = ''
-                        if str(after.avatar) != 'None':
-                            url += str(after.avatar)
-                        else:
-                            url += 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQY-apNmlwrLUW0vk44GvoQd513FynuObVCo-p8Yb0KYQ&s'
-                        embed.set_author(name=str(after), icon_url=url)
-                        embed.set_footer(text=f"Member ID: {after.id} · {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S')}")
-                        await self.bot.get_channel(mod_channel).send(embed=embed)
-                        await after.send(embed=discord.Embed(title=f"You've been unmuted in {after.guild}",
-                                                             description=f"**Moderator: **{event.user}"))
+                    embed = discord.Embed(title="Member unmuted",
+                                          description=f"**Moderator:** {event.user} ({event.user.mention})",
+                                          color=unpunish_clr)
+                    url = ''
+                    if str(after.avatar) != 'None':
+                        url += str(after.avatar)
+                    else:
+                        url += 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQY-apNmlwrLUW0vk44GvoQd513FynuObVCo-p8Yb0KYQ&s'
+                    embed.set_author(name=str(after), icon_url=url)
+                    embed.set_footer(
+                        text=f"Member ID: {after.id} · {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S')}")
+                    await self.bot.get_channel(mod_channel).send(embed=embed)
+
                 if not event.user.bot:
-                    await log_infraction(after, after.guild, {"type": "Mute", "Muted for": t(int((after.communication_disabled_until-datetime.datetime.now(tz=datetime.timezone.utc)).total_seconds())), "Reason": event.reason,"Moderator": str(event.user)},conn)
+                    await after.send(embed=discord.Embed(title=f"You've been unmuted in {after.guild}",
+                                                         description=f"**Moderator: **{event.user}",color=0x33f25c))
+                    await log_infraction(after, after.guild, {"type": "Unmute", "Moderator": str(event.user)},
+                                         conn)
 
 
 class GuildUpdate(commands.Cog):
@@ -498,7 +542,8 @@ class GuildUpdate(commands.Cog):
             if isinstance(server_log_channel, int):
                 if ok_different:
                     embed = discord.Embed(title='Server updated',
-                                          description=f"**Updated by:** {(await after.audit_logs(limit=1).flatten())[0].user} ({(await after.audit_logs(limit=1).flatten())[0].user.mention})", color=update_clr)
+                                          description=f"**Updated by:** {(await after.audit_logs(limit=1).flatten())[0].user} ({(await after.audit_logs(limit=1).flatten())[0].user.mention})",
+                                          color=update_clr)
 
                     before_info = ""
                     after_info = ""
@@ -633,7 +678,8 @@ class GuildUpdate(commands.Cog):
                     embed_info['changetype'] = 'Added'
                     embed_info['color'] = add_clr
                 if len(after) == len(before) and 'Emoji Updated' in actions:
-                    changed = [emoji for emoji in after if before[before.index(emoji)].name != after[before.index(emoji)].name][0]
+                    changed = \
+                    [emoji for emoji in after if before[before.index(emoji)].name != after[before.index(emoji)].name][0]
                     emoji_id += changed.id
                     embed_info['title'] = "Emoji updated"
                     embed_info['url'] = changed.url
@@ -645,7 +691,8 @@ class GuildUpdate(commands.Cog):
                 embed_info[
                     'footer'] = f"Emoji ID: {emoji_id} · {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S')}"
                 embed = discord.Embed(title=embed_info['title'],
-                                      description=f"{embed_info['name']}**{embed_info['changetype']} by:** {embed_info['updater']}\n**Emoji icon:**", color=embed_info['color'])
+                                      description=f"{embed_info['name']}**{embed_info['changetype']} by:** {embed_info['updater']}\n**Emoji icon:**",
+                                      color=embed_info['color'])
                 embed.set_image(url=embed_info['url'])
                 embed.set_footer(text=embed_info['footer'])
 
@@ -673,7 +720,8 @@ class GuildUpdate(commands.Cog):
                               "channel": f"{channel.mention}",
                               "footer": f"Channel ID: {channel.id} · {datetime.datetime.now().strftime('%m/%d/%y %H:%M:%S')}"}
                 embed = discord.Embed(title=embed_info['title'],
-                                      description=f"**Channel:** {embed_info['channel']}\n**Created by:** {embed_info['user']}" ,color=add_clr)
+                                      description=f"**Channel:** {embed_info['channel']}\n**Created by:** {embed_info['user']}",
+                                      color=add_clr)
                 embed.set_footer(text=embed_info['footer'])
                 await self.bot.get_channel(server_log_channel).send(embed=embed)
 
@@ -699,7 +747,8 @@ class GuildUpdate(commands.Cog):
                               "channel": f"{channel}",
                               "footer": f"Channel ID: {channel.id} · {datetime.datetime.now().strftime('%m/%d/%y %H:%M:%S')}"}
                 embed = discord.Embed(title=embed_info['title'],
-                                      description=f"**Channel name:** {embed_info['channel']}\n**Deleted by:** {embed_info['user']}",color=remove_clr)
+                                      description=f"**Channel name:** {embed_info['channel']}\n**Deleted by:** {embed_info['user']}",
+                                      color=remove_clr)
                 embed.set_footer(text=embed_info['footer'])
                 await self.bot.get_channel(server_log_channel).send(embed=embed)
 
@@ -716,7 +765,8 @@ class GuildUpdate(commands.Cog):
                     ok_different = before.name != after.name or before.topic != after.topic or before.slowmode_delay != after.slowmode_delay or before.is_nsfw() != after.is_nsfw()
                     if ok_different:
                         embed = discord.Embed(title=f"Channel #{after.name} updated",
-                                              description=f"**Updated by:** {person} ({person.mention})",color=update_clr)
+                                              description=f"**Updated by:** {person} ({person.mention})",
+                                              color=update_clr)
                         before_info = ""
                         after_info = ""
                         if before.name != after.name:
@@ -743,14 +793,16 @@ class GuildUpdate(commands.Cog):
                         if len(new) < len(old):
                             embed = discord.Embed(
                                 title=f'Overwrites in {before.name} for {[role.name for role in old.keys() if role not in new.keys()][0]} removed',
-                                description=f"**Removed by:** {person} ({person.mention})",color=update_clr)
-                            embed.set_footer(text=f"Channel ID: {after.id} · {datetime.datetime.now().strftime('%m/%d/%y %H:%M:%S')}")
+                                description=f"**Removed by:** {person} ({person.mention})", color=update_clr)
+                            embed.set_footer(
+                                text=f"Channel ID: {after.id} · {datetime.datetime.now().strftime('%m/%d/%y %H:%M:%S')}")
                             await self.bot.get_channel(server_log_channel).send(embed=embed)
                         if len(new) > len(old):
                             embed = discord.Embed(
                                 title=f'Overwrites in {before.name} for {[role.name for role in new.keys() if role not in old.keys()][0]} added',
-                                description=f"**Added by:** {person} ({person.mention})",color=update_clr)
-                            embed.set_footer(text=f"Channel ID: {after.id} · {datetime.datetime.now().strftime('%m/%d/%y %H:%M:%S')}")
+                                description=f"**Added by:** {person} ({person.mention})", color=update_clr)
+                            embed.set_footer(
+                                text=f"Channel ID: {after.id} · {datetime.datetime.now().strftime('%m/%d/%y %H:%M:%S')}")
                             await self.bot.get_channel(server_log_channel).send(embed=embed)
                         if len(new) == len(old):
                             print('l')
@@ -781,27 +833,34 @@ class GuildUpdate(commands.Cog):
                                                                                                             ':white_check_mark:').replace(
                                             'False', ":x:").replace("None", ':white_large_square:'))
                             embed = discord.Embed(title=f'Overwrites in #{after.name} for "{role}" updated',
-                                                  description=f"**Updated by:** {person} ({person.mention})",color=update_clr)
+                                                  description=f"**Updated by:** {person} ({person.mention})",
+                                                  color=update_clr)
                             string = ""
                             for change in changes:
                                 string += change
                             embed.add_field(name='New overwrites', value=string)
-                            embed.set_footer(text=f"Channel ID: {after.id} · {datetime.datetime.now().strftime('%m/%d/%y %H:%M:%S')}")
+                            embed.set_footer(
+                                text=f"Channel ID: {after.id} · {datetime.datetime.now().strftime('%m/%d/%y %H:%M:%S')}")
                             await self.bot.get_channel(server_log_channel).send(embed=embed)
 
                 if isinstance(before, discord.VoiceChannel):
-                    ok_different = [before.name != after.name, before.overwrites != after.overwrites, before.bitrate != after.bitrate, before.video_quality_mode != after.video_quality_mode, before.rtc_region != after.rtc_region, before.user_limit != after.user_limit].count(True) > 0
+                    ok_different = [before.name != after.name, before.overwrites != after.overwrites,
+                                    before.bitrate != after.bitrate,
+                                    before.video_quality_mode != after.video_quality_mode,
+                                    before.rtc_region != after.rtc_region, before.user_limit != after.user_limit].count(
+                        True) > 0
                     if ok_different:
                         embed = discord.Embed(title=f"Voice channel {after.name} updated",
-                                              description=f"**Updated by:** {person} ({person.mention})",color=update_clr)
+                                              description=f"**Updated by:** {person} ({person.mention})",
+                                              color=update_clr)
                         before_info = ""
                         after_info = ""
                         if before.name != after.name:
                             before_info += f"**Name:** {before.name}        \n"
                             after_info += f"**Name:** {after.name}      \n"
                         if before.bitrate != after.bitrate:
-                            before_info += f"**Bitrate:** {before.bitrate/1000} kbps        \n"
-                            after_info += f"**Bitrate:** {after.bitrate/1000} kbps        \n"
+                            before_info += f"**Bitrate:** {before.bitrate / 1000} kbps        \n"
+                            after_info += f"**Bitrate:** {after.bitrate / 1000} kbps        \n"
                         if before.video_quality_mode != after.video_quality_mode:
                             before_info += f"**Video quality mode:** {before.video_quality_mode.name}        \n"
                             after_info += f"**Video quality mode:** {after.video_quality_mode.name}        \n"
@@ -884,7 +943,8 @@ class GuildUpdate(commands.Cog):
                     else:
                         url += 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQY-apNmlwrLUW0vk44GvoQd513FynuObVCo-p8Yb0KYQ&s'
                     embed.set_author(name=str(member), icon_url=url)
-                    embed.set_footer(text=f"Bot ID: {member.id} · {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S')}")
+                    embed.set_footer(
+                        text=f"Bot ID: {member.id} · {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S')}")
                     who_did_it = (await member.guild.audit_logs(limit=1).flatten())[0].user
                     embed.description = f"**Removed by:** {who_did_it} ({who_did_it.mention})"
                     await self.bot.get_channel(server_log_channel).send(embed=embed)
@@ -907,7 +967,8 @@ class GuildUpdate(commands.Cog):
                               "role": f"{role.mention}",
                               "footer": f"Role ID: {role.id} · {datetime.datetime.now().strftime('%m/%d/%y %H:%M:%S')}"}
                 embed = discord.Embed(title=embed_info['title'],
-                                      description=f"**Role:** {embed_info['role']}\n**Created by:** {embed_info['user']}", color=add_clr)
+                                      description=f"**Role:** {embed_info['role']}\n**Created by:** {embed_info['user']}",
+                                      color=add_clr)
                 embed.set_footer(text=embed_info['footer'])
                 await self.bot.get_channel(server_log_channel).send(embed=embed)
 
@@ -930,7 +991,8 @@ class GuildUpdate(commands.Cog):
                               "footer": f"Role ID: {role.id} · {datetime.datetime.now().strftime('%m/%d/%y %H:%M:%S')}"
                               }
                 embed = discord.Embed(title=embed_info['title'],
-                                      description=f"**Role:** {role.name}\n**Deleted by:** {embed_info['user']}", color=remove_clr)
+                                      description=f"**Role:** {role.name}\n**Deleted by:** {embed_info['user']}",
+                                      color=remove_clr)
                 embed.set_footer(text=embed_info['footer'])
                 await self.bot.get_channel(server_log_channel).send(embed=embed)
 
@@ -943,9 +1005,10 @@ class GuildUpdate(commands.Cog):
             actions = dict(settings)['server_actions']
             if isinstance(server_log_channel, int) and 'Role Updated' in actions:
                 who_did_it = \
-                (await after.guild.audit_logs(limit=1, action=discord.AuditLogAction.role_update).flatten())[0].user
+                    (await after.guild.audit_logs(limit=1, action=discord.AuditLogAction.role_update).flatten())[0].user
                 embed = discord.Embed(title=f'Role "{before.name}" updated',
-                                      description=f"**Updated by:** {who_did_it} ({who_did_it.mention})", color=update_clr)
+                                      description=f"**Updated by:** {who_did_it} ({who_did_it.mention})",
+                                      color=update_clr)
                 before_info = ''
                 after_info = ''
 
@@ -1092,5 +1155,3 @@ def setup(bot):
     bot.add_cog(Moderation(bot))
     bot.add_cog(GuildUpdate(bot))
     bot.add_cog(VCLogging(bot))
-
-

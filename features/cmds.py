@@ -1,3 +1,5 @@
+import re
+
 import discord
 from discord.ext import commands
 import asyncio
@@ -5,6 +7,8 @@ import asyncpg
 import datetime
 from features.punishing import warn, log_mute, log_unmute, log_tempban, log_ban, log_infraction
 from difflib import SequenceMatcher as sm
+
+
 tables = ['modlogs','messagespam', 'emojispam', 'mentionspam', 'stickerspam', 'attachmentspam', 'linkspam','duplicatecharacters','duplicatemessages','linebreaks','toomanycaps','invites','selfbot','nsfwcontent','hatespeech','badwords','badlinks','badnicks','badnames','badstatuses','nsfwpfp','autopunish','autokickban', 'automodgeneral']
 setting_stuff = ["Modlog settings","Message spam settings","Emoji spam settings","Mention spam settings","Sticker spam settings","Attachment spam settings","Link spam settings", "Duplicate character settings", "Duplicate message settings", "Line break settings", "Capitals settings", "Invite settings", "Selfbot settings", "NSFW content settings", "Hate speech settings",'Bad word settings','Bad link settings','Bad nickname settings','Bad username settings','Bad custom status settings','NSFW avatar settings', 'Autopunish settings',' Auto kick/ban settings', 'Whitelist settings']
 s = {'badlinks': 'Blacklisted links','badwords': 'Blacklisted words','badnicks': 'Blacklisted nicknames','badnames': 'Blacklisted usernames','badstatuses': 'Blacklisted custom statuses'}
@@ -26,7 +30,25 @@ default_settings = {'messagespam': {"punishments":["Delete message","Mute","Warn
 
 'nsfwpfp': {"punishments":["Ban"],"points":0,"timeunit":"minutes","timeval":0,"role_whitelists":'{}'}}
 
+log_actions = {"Message Events": ["Message Deleted", "Message Edited", "Message Bulk Deletion"], "Member Events": [
+    "Username Changed", "Avatar Changed", "Custom Status Changed", "Nickname Changed", "Roles Changed", "Member Joined",
+    "Member Left"], "Moderation Events": ["Member Warned", "Infraction Removed", "Member Muted", "Member Unmuted",
+                                          "Member Kicked", "Member Tempbanned",
+                                          "Member Banned", "Member Unbanned"],
+               "Server Changes": ["Emoji Added", "Emoji Updated", "Emoji Deleted", "Channel Created", "Channel Updated",
+                                  "Channel Deleted"
+                   , "Role Created", "Role Updated", "Role Deleted", "Server Name Changed", "Server Icon Changed",
+                                  "Discovery Splash Changed", "AFK Channel Changed", "System Channel Changed",
+                                  "Default Notifications Changed", "AFK Timeout Changed", "Bot Added",
+                                  "Bot Removed", "Invite Splash Changed", "Banner Changed", "Explicit Filter Changed",
+                                  "Verification Level Changed", "Invite Created", "Invite Deleted", "MFA Changed",
+                                  "Server Owner Changed"], "Voice Channel Events": ["Member Joined VC",
+                                                                                    "Member Left VC", "Member Moved"]}
+badProfiles = { 'hitler': 'Substring', 'nazi': 'Substring', 'adolf': 'Substring', 'holocaust': 'Substring', 'auschwitz': 'Substring', 'rapist': 'Substring', 'porn': 'Substring', 'molest': 'Substring', 'traffick': 'Substring', 'rape': 'NoSubstring', 'raping': 'NoSubstring', 'pedo': 'Substring', 'paedo': 'Substring', 'sex': 'NoSubstring'}
 
+default_modlogs = {'message_channel': '', 'member_channel': '', 'moderation_channel': '', 'server_channel': '', 'voicestate_channel': '', 'message_actions': ['Message Deleted', 'Message Edited', 'Message Bulk Deletion'], 'member_actions': ['Username Changed', 'Avatar Changed', 'Custom Status Changed', 'Member Joined', 'Roles Changed', 'Nickname Changed', 'Member Left'], 'moderations': ['Member Warned', 'Member Kicked', 'Infraction Removed', 'Member Tempbanned', 'Member Muted', 'Member Unbanned', 'Member Unmuted', 'Member Banned'], 'server_actions': ['Emoji Added', 'Emoji Updated', 'Emoji Deleted', 'Channel Deleted', 'Channel Updated', 'Channel Created', 'Role Created', 'Role Updated', 'Role Deleted', 'Server Icon Changed', 'Discovery Splash Changed', 'Server Name Changed', 'AFK Channel Changed', 'System Channel Changed', 'Default Notifications Changed', 'Bot Removed', 'Bot Added', 'AFK Timeout Changed', 'Invite Splash Changed', 'Banner Changed', 'Explicit Filter Changed', 'Invite Deleted', 'Invite Created', 'Server Owner Changed', 'MFA Changed', 'Verification Level Changed'], 'vc_actions': ['Member Joined VC', 'Member Left VC', 'Member Moved']}
+default_autopunish = [{'type':"mute", "durationType": "hours", "duration": 6, "threshold": 15},{'type':"kick", "durationType": "minutes", "duration": 1, "threshold": 30},{'type':"tempban", "durationType": "days", "duration": 3, "threshold": 45},{'type':"ban", "durationType": "minutes", "duration": 1, "threshold": 60}]
+default_autokb = {'banrules':[str({"type": "nsfwpfp", "timeVal": 24, "timeUnit": "hours", "usernames": {}, "statuses": {}}),str({"type": "username", "timeVal": 24, "timeUnit": "hours", "usernames": badProfiles, "statuses": {}}),str({"type": "status", "timeVal": 24, "timeUnit": "hours", "usernames": {}, "statuses": badProfiles})],'kickrules':[str({"type": "accountAge", "timeVal": 7, "timeUnit": "days", "usernames": {}, "statuses": {}}),str({"type": "promoName", "timeVal": 24, "timeUnit": "hours", "usernames": {}, "statuses": {}})]}
 d = {}
 
 with open('tk.json','r+') as f:
@@ -143,6 +165,7 @@ def settings_to_embed(settings, autotype, ind):
     return discord.Embed(title=setting_stuff[ind], description="\n".join(tba))
 
 
+
 dbpass = 'mysecretpassword'
 
 
@@ -167,7 +190,8 @@ def multi_settings_to_embed(settings, autotype, ind,table):
             description += f"**Threshold: **{rule['threshold']} warn points\n"
             embed.add_field(name=f"Rule #{rules.index(rule)+1}", value=description, inline=False)
     if autotype == 'autokb':
-        types = {'accountAge': 'account age', 'status': 'blacklisted statuses', 'nsfwpfp': 'NSFW avatars','promoName': 'invite links in username', 'username': 'blacklisted usernames'}
+        embed.title = 'Auto kick/ban settings'
+        types = {'accountAge': 'account age', 'status': 'blacklisted statuses', 'nsfwpfp': 'NSFW avatars','promoName': 'invite links in username/status', 'username': 'blacklisted usernames'}
         kick_description = ''
         ban_description = ''
         if "kickrules" in settings:
@@ -179,7 +203,7 @@ def multi_settings_to_embed(settings, autotype, ind,table):
                         if rule['type'] == 'status':
                             words = []
                             bl = rule['statuses']
-                            kick_description += f"**Blacklisted statuses:**"
+                            kick_description += f"**Blacklisted statuses: **"
                             for word in bl:
                                 if bl[word] == 'NoSubstring':
                                     words.append(word)
@@ -189,7 +213,7 @@ def multi_settings_to_embed(settings, autotype, ind,table):
                         if rule['type'] == 'username':
                             words = []
                             bl = rule['usernames']
-                            kick_description += f"**Blacklisted usernames:**"
+                            kick_description += f"**Blacklisted usernames: **"
                             for word in bl:
                                 if bl[word] == 'NoSubstring':
                                     words.append(word)
@@ -214,7 +238,7 @@ def multi_settings_to_embed(settings, autotype, ind,table):
                         if rule['type'] == 'status':
                             words = []
                             bl = rule['statuses']
-                            ban_description += f"**Blacklisted statuses:**"
+                            ban_description += f"**Blacklisted statuses: **"
                             for word in bl:
                                 if bl[word] == 'NoSubstring':
                                     words.append(word)
@@ -224,7 +248,7 @@ def multi_settings_to_embed(settings, autotype, ind,table):
                         if rule['type'] == 'username':
                             words = []
                             bl = rule['usernames']
-                            ban_description += f"**Blacklisted usernames:**"
+                            ban_description += f"**Blacklisted usernames: **"
                             for word in bl:
                                 if bl[word] == 'NoSubstring':
                                     words.append(word)
@@ -235,11 +259,11 @@ def multi_settings_to_embed(settings, autotype, ind,table):
                             t = rule['timeVal']
                             u = rule['timeUnit']
                             ban_description += f"**Mininum account age: **{t} {u}"
-                        ban_description += '\n'
+                        ban_description += '\n\n'
             else:
                 ban_description += 'None set at the moment'
             embed.add_field(name="Ban rules", value=ban_description)
-            embed.set_footer(text="NOTE: blacklisted words in bold will be checked in substrings, meaning that if the word written as part of another word, the user will be punished. For example, if the word 'lol' was bold, having the word 'lollipop' in your username/status will have you punished. Otherwise it won't have you punished.")
+            embed.set_footer(text="NOTE: blacklisted words in bold will be checked in substrings, meaning that if the word written as part of another word, the user will be punished. For example, if the word 'lol' was bold, having the word 'lollipop' will have you punished. Otherwise it won't have you punished.")
     if autotype == 'blacklist':
         embed.title = setting_stuff[ind]
         for category in settings:
@@ -270,14 +294,14 @@ def multi_settings_to_embed(settings, autotype, ind,table):
                 cha = ', '.join(channels)
                 ch = f'**Whitelisted channels:** {cha}\n'
 
-            rl_ids = list(c['whitelistedRoles'].keys())
-            roles = [f"<#{rl_id}>" for rl_id in rl_ids]
+            rl_ids = list(c['whitelistedRoles'].values())
+            roles = [f"<@&{rl_id}>" for rl_id in rl_ids]
             rla = ', '.join(roles)
             rl = f'**Whitelisted roles:** {rla}'
             desc = f'**Punishments:** {p}\n{spec_p}**{s[table]}:** {wr_str}\n{ch}{rl}'
 
             embed.add_field(name=f"Category '{title}'", value=desc)
-            embed.set_footer(text="NOTE: blacklisted words in bold will be checked in substrings, meaning that if the word written as part of another word, the user will be punished. For example, if the word 'lol' was bold, having the word 'lollipop' in your username/status will have you punished. Otherwise it won't have you punished.")
+            embed.set_footer(text="NOTE: blacklisted words in bold will be checked in substrings, meaning that if the word written as part of another word, the user will be punished. For example, if the word 'lol' was bold, the word 'lollipop' will have you punished. Otherwise it won't have you punished.")
 
     return embed
 
@@ -429,6 +453,11 @@ def most_similar(word, words):
     return [W for W in words if ws[W] == max(list(ws.values()))][0]
 
 
+def two_weeks(msg):
+    return (datetime.datetime.now(tz=datetime.timezone.utc) - msg.created_at).total_seconds() <= 1209600 and not \
+        re.match('.*purge \d*\s*', msg.content)
+
+
 class Punishing(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -457,8 +486,14 @@ class Punishing(commands.Cog):
     @commands.command()
     @commands.has_permissions(manage_messages=True)
     async def purge(self, ctx, amount: int):
-        await ctx.channel.purge(limit=amount)
-        await ctx.send(f"<:check:1009915788762812487> purged {amount} messages.")
+        if amount > 500:
+            await ctx.send('Too many messages.')
+        else:
+            msgs = await ctx.channel.purge(limit=amount, bulk=True, check=two_weeks)
+            if len(msgs) == 0:
+                await ctx.send('No messages were purged, as none under two weeks old were found.')
+            else:
+                await ctx.send(f"<:check:1009915788762812487> purged {len(msgs)} messages.")
 
 
     @purge.error
@@ -626,10 +661,11 @@ class Punishing(commands.Cog):
             await ctx.send("<:xmark:1009919995297415190> I don't have permissions to unmute this member.")
 
     @commands.command()
-    @commands.has_permissions(moderate_members=True)
+    @commands.has_permissions(ban_members=True)
     async def unban(self, ctx, member: discord.User):
-        for ban in await ctx.guild.bans():
-            if str(ban.user) == str(member):
+        bans = await ctx.guild.bans().flatten()
+        for ban in bans:
+            if ban.user.id == member.id:
                 await ctx.guild.unban(ban.user)
         await ctx.send(f"<:check:1009915788762812487> **{member}** has been unbanned.")
 
@@ -637,6 +673,7 @@ class Punishing(commands.Cog):
     @unban.error
     @commands.has_permissions(ban_members=True)
     async def handle_unban_error(self, ctx, error):
+        print(error)
         if isinstance(error, discord.ext.commands.errors.MissingRequiredArgument):
             await ctx.send(f'<:xmark:1009919995297415190> Argument `{error.param.name}` is missing.')
         if isinstance(error, discord.ext.commands.errors.MemberNotFound):
@@ -673,7 +710,7 @@ class Punishing(commands.Cog):
         if isinstance(error, discord.ext.commands.errors.MissingPermissions):
             await ctx.send(f"<:xmark:1009919995297415190> You don't have permissions to run this command: requires `manage_guild`.")
 
-
+    
 
 
 class Settings(commands.Cog):
@@ -690,28 +727,32 @@ class Settings(commands.Cog):
         else:
             settings = await warn_conn.fetchrow(f"SELECT * FROM {table} WHERE guild_id=$1", ctx.guild.id)
             if settings is None:
-                if table not in ['modlogs','autopunish','autokickban']:
-                    if table in ['messagespam', 'emojispam', 'mentionspam', 'stickerspam', 'attachmentspam', 'linkspam']:
-                        await ctx.send(embed=settings_to_embed(default_settings[table], 'spam',
-                                                               tables.index(table)))
-                    elif table in ['duplicatecharacters', 'duplicatemessages', 'linebreaks', 'toomanycaps']:
-                        await ctx.send(
-                            embed=settings_to_embed(default_settings[table], 'toomuch',
-                                                    tables.index(table)))
-                    elif table in ['invites', 'hatespeech', 'selfbot', 'nsfwcontent', 'nsfwpfp']:
-                        await ctx.send(
-                            embed=settings_to_embed(default_settings[table], 'unacceptable',
-                                                    tables.index(table)))
-                    elif table in ['badnicks', 'badlinks', 'badnames', 'badwords', 'badstatuses']:
-                        await ctx.send(
-                            embed=multi_settings_to_embed(default_settings[table],
-                                                          'blacklist',
-                                                          tables.index(table), table))
-                    elif table == 'automodgeneral':
-                        await ctx.send(embed=settings_to_embed({'channel_whitelists': str({}), 'role_whitelists': str({})} ,'general', len(setting_stuff)-1))
-    
-                else:
-                    await ctx.send("the managers of this server haven't configured settings for this table")
+                if table in ['messagespam', 'emojispam', 'mentionspam', 'stickerspam', 'attachmentspam', 'linkspam']:
+                    await ctx.send(embed=settings_to_embed(default_settings[table], 'spam',
+                                                           tables.index(table)))
+                elif table in ['duplicatecharacters', 'duplicatemessages', 'linebreaks', 'toomanycaps']:
+                    await ctx.send(
+                        embed=settings_to_embed(default_settings[table], 'toomuch',
+                                                tables.index(table)))
+                elif table in ['invites', 'hatespeech', 'selfbot', 'nsfwcontent', 'nsfwpfp']:
+                    await ctx.send(
+                        embed=settings_to_embed(default_settings[table], 'unacceptable',
+                                                tables.index(table)))
+                elif table in ['badnicks', 'badlinks', 'badnames', 'badwords', 'badstatuses']:
+                    await ctx.send(
+                        embed=multi_settings_to_embed(default_settings[table],
+                                                      'blacklist',
+                                                      tables.index(table), table))
+                elif table == 'automodgeneral':
+                    await ctx.send(embed=settings_to_embed({'channel_whitelists': str({}), 'role_whitelists': str({})} ,'general', len(setting_stuff)-1))
+                elif table == 'modlogs':
+                    await ctx.send(embed=settings_to_embed(default_modlogs, 'modlogs',tables.index(table)))
+                elif table == 'autopunish':
+                    await ctx.send(
+                        embed=multi_settings_to_embed(default_autopunish, 'autokb', tables.index(table), 't'))
+                elif table == 'autokickban':
+                    await ctx.send(
+                        embed=multi_settings_to_embed(default_autokb, 'autokb', tables.index(table), 't'))
             else:
                 if table in ['messagespam','emojispam', 'mentionspam', 'stickerspam','attachmentspam','linkspam']:
                     await ctx.send(embed=settings_to_embed(dict(settings), 'spam', tables.index(table)))
@@ -728,7 +769,6 @@ class Settings(commands.Cog):
                 elif table == 'autopunish':
                     await ctx.send(embed=multi_settings_to_embed(dict(settings)['rules'], 'autopunish',tables.index(table), 't'))
                 elif table == 'autokickban':
-                    print(dict(settings))
                     await ctx.send(embed=multi_settings_to_embed(dict(settings), 'autokb', tables.index(table), 't'))
                 elif table in ['badnicks', 'badlinks', 'badnames', 'badwords', 'badstatuses']:
                     await ctx.send(embed=multi_settings_to_embed(dict(settings)['categories'], 'blacklist',
@@ -739,14 +779,15 @@ class Settings(commands.Cog):
 
     @commands.command()
     async def infractions(self, ctx, member:discord.Member = None, page: int = 1):
-        await ctx.send(embed=(await get_infractions(ctx.guild, member))[page - 1])
+        if member == None:
+            await ctx.send(embed=(await get_infractions(ctx.guild, ctx.author))[page - 1])
+        else:
+            await ctx.send(embed=(await get_infractions(ctx.guild, member))[page - 1])
+
 
 
     @infractions.error
     async def inf_err(self, ctx, error):
-        if isinstance(error, discord.ext.commands.errors.CommandInvokeError):
-            info = await get_infractions(ctx.guild, ctx.author)
-            await ctx.send(embed=info[0])
         if isinstance(error, discord.ext.commands.errors.MemberNotFound):
             await ctx.send('member not found. check someone else')
 

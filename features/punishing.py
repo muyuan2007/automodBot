@@ -52,30 +52,32 @@ async def warn(bot, member, guild, amount, connection, reason, who):
 
     if autopunish is not None:
         rules = [eval(rule) for rule in dict(autopunish)['rules']]
-        max_rule = find_max_rule(rules, old_points + amount)
-        if 'type' in list(max_rule.keys()):
-            if max_rule['type'] == 'mute' and old_points < max_rule['threshold']:
-                await log_mute(bot, guild, member, f"{max_rule['duration']} {max_rule['durationType']}", f"reaching {max_rule['threshold']} points", bot, connection)
-                await member.timeout(until=datetime.datetime.now(tz=datetime.timezone.utc) + datetime.timedelta(
-                    seconds=time_from_two_vals(max_rule['duration'], max_rule['durationType'])))
+    else:
+        rules = [{'type':"mute", "durationType": "hours", "duration": 6, "threshold": 15},{'type':"kick", "durationType": "minutes", "duration": 1, "threshold": 30},{'type':"tempban", "durationType": "days", "duration": 3, "threshold": 45},{'type':"ban", "durationType": "minutes", "duration": 1, "threshold": 60}]
+    max_rule = find_max_rule(rules, old_points + amount)
+    if 'type' in list(max_rule.keys()):
+        if max_rule['type'] == 'mute' and old_points < max_rule['threshold']:
+            await log_mute(bot, guild, member, f"{max_rule['duration']} {max_rule['durationType']}", f"reaching {max_rule['threshold']} points", bot, connection)
+            await member.timeout(until=datetime.datetime.now(tz=datetime.timezone.utc) + datetime.timedelta(
+                seconds=time_from_two_vals(max_rule['duration'], max_rule['durationType'])))
 
-                await handle_send(member, embed=discord.Embed(title=f"You've been muted in {guild}",
-                                                              description=f"**Duration:** {max_rule['duration']} {max_rule['durationType']}\n**Reason:** reaching {max_rule['threshold']} points\n**Moderator: **{bot_user}", color=0xf54254))
-            if max_rule['type'] == 'kick' and old_points < max_rule['threshold']:
-                await handle_send(member,  embed=discord.Embed(title=f"You've been kicked from {guild}", description=f"**Reason:** reaching {max_rule['threshold']} points\n**Moderator: **{bot_user}", color=0xf54254))
-                await member.kick(reason=f"reaching {max_rule['threshold']} points")
-            if max_rule['type'] == 'tempban' and old_points < max_rule['threshold']:
-                await handle_send(member, embed=discord.Embed(title=f"You've been temporarily banned from {guild}",description=f"**Duration:** {max_rule['duration']} {max_rule['durationType']}\n**Reason:** reaching {max_rule['threshold']} points\n**Moderator: **{bot_user}", color=0xf54254))
-                await member.ban(delete_message_days=0)
+            await handle_send(member, embed=discord.Embed(title=f"You've been muted in {guild}",
+                                                          description=f"**Duration:** {max_rule['duration']} {max_rule['durationType']}\n**Reason:** reaching {max_rule['threshold']} points\n**Moderator: **{bot_user}", color=0xf54254))
+        if max_rule['type'] == 'kick' and old_points < max_rule['threshold']:
+            await handle_send(member,  embed=discord.Embed(title=f"You've been kicked from {guild}", description=f"**Reason:** reaching {max_rule['threshold']} points\n**Moderator: **{bot_user}", color=0xf54254))
+            await member.kick(reason=f"reaching {max_rule['threshold']} points")
+        if max_rule['type'] == 'tempban' and old_points < max_rule['threshold']:
+            await handle_send(member, embed=discord.Embed(title=f"You've been temporarily banned from {guild}",description=f"**Duration:** {max_rule['duration']} {max_rule['durationType']}\n**Reason:** reaching {max_rule['threshold']} points\n**Moderator: **{bot_user}", color=0xf54254))
+            await member.ban(delete_message_days=0)
 
-                await log_tempban(bot, guild, member, f"{max_rule['duration']} {max_rule['durationType']}",
-                                  f"reaching {max_rule['threshold']} points", bot, connection)
-                await asyncio.sleep(time_from_two_vals(max_rule['duration'], max_rule['durationType']))
-                await member.unban()
-            if max_rule['type'] == 'ban':
-                await handle_send(member, embed=discord.Embed(title=f"You've been banned from {guild}", description=f"**Reason:** reaching {max_rule['threshold']} points\n**Moderator: **{bot_user}", color=0xf54254))
-                await member.ban(reason=f"reaching {max_rule['threshold']} points", delete_message_days=0)
-                await log_ban(bot, guild, member, f"reaching {max_rule['threshold']} points", bot, connection)
+            await log_tempban(bot, guild, member, f"{max_rule['duration']} {max_rule['durationType']}",
+                              f"reaching {max_rule['threshold']} points", bot, connection)
+            await asyncio.sleep(time_from_two_vals(max_rule['duration'], max_rule['durationType']))
+            await member.unban()
+        if max_rule['type'] == 'ban':
+            await handle_send(member, embed=discord.Embed(title=f"You've been banned from {guild}", description=f"**Reason:** reaching {max_rule['threshold']} points\n**Moderator: **{bot_user}", color=0xf54254))
+            await member.ban(reason=f"reaching {max_rule['threshold']} points", delete_message_days=0)
+            await log_ban(bot, guild, member, f"reaching {max_rule['threshold']} points", bot, connection)
 
 
 async def log_mute(bot, guild, member, time, reason, who, connection):

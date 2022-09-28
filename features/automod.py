@@ -6,10 +6,10 @@ from urlextract import URLExtract
 import discord
 from discord.ext import commands
 import asyncio
-from features.hatespeech import hate_speech_detection
 from features.punishing import warn, log_tempban, log_mute, punish_nsfw, log_ban
 from features.spellchecking import check
 import asyncpg
+from hatesonar import Sonar
 
 dbpass = 'mysecretpassword'
 import re
@@ -35,6 +35,9 @@ default_settings = {'messagespam': {"punishments":["Delete message","Mute","Warn
 
 'nsfwpfp': {"punishments":["Ban"],"points":0,"timeunit":"minutes","timeval":0,"role_whitelists":'{}'}}
 
+
+def no_sub(text, target):
+    return f" {text.lower()} " in target.lower() or target.lower().strip() == text.lower() or target.lower().strip().endswith(f" {text.lower()}") or target.strip().lower().startswith(f"{text.lower()} ")
 
 d = {}
 
@@ -115,7 +118,7 @@ def similarity(messages):
     match_ratios = []
     if messages[0].content != '':
         for i in range(1, len(messages)):
-            match_ratios.append(sm(None, messages[0].content, messages[i].content).ratio())
+            match_ratios.append(sm(None, messages[0].content.lower(), messages[i].content.lower()).ratio())
 
     return match_ratios
 
@@ -399,7 +402,8 @@ async def message_punishments(message, guild, bot):
         punishments = hate_settings['punishments']
         role_whitelists = set(eval(hate_settings['role_whitelists']).values())
         channel_whitelists = list(eval(hate_settings['channel_whitelists']).values())
-        hateful = 'Hate Speech' in hate_speech_detection(check(message.content.lower()))
+        sonar = Sonar()
+        hateful = sonar.ping(text=message.content)['top_class'] == 'hate_speech'
         if hateful and str(message.channel.id) not in channel_whitelists and len(set([str(role.id) for role in message.author.roles]).intersection(role_whitelists)) == 0:
             handle([message], punishments, hate_settings, 'sending a message with hate speech')
 
@@ -465,7 +469,7 @@ def msg_punishments(user, categories, message, content, cttype):
             cat_punishments = c['punishments']
             if str(message.channel.id) not in channel_whitelists and len(set([str(role.id) for role in user.roles]).intersection(role_whitelists)) == 0:
                 for word in substring:
-                    if word in content:
+                    if word.lower() in content.lower() or word in check(content.lower()).lower():
                         if "Delete message" in cat_punishments:
                             default_punishments['delete'] = True
                         if "Mute" in cat_punishments:
@@ -494,7 +498,7 @@ def msg_punishments(user, categories, message, content, cttype):
                                 default_punishments['ban_words'][c['title']] = []
                             default_punishments['ban_words'][c['title']].append(word)
                 for word in non_substring:
-                    if f" {word} " in content or content.strip() == word or content.endswith(f" {word}"):
+                    if no_sub(word, content) or no_sub(word, check(content)):
                         if "Delete message" in cat_punishments:
                             default_punishments['delete'] = True
                         if "Mute" in cat_punishments:
@@ -627,7 +631,7 @@ async def profile_punishments(user, categories, content, type):
             cat_punishments = c['punishments']
             if len(set([str(role.id) for role in user.roles]).intersection(role_whitelists)) == 0:
                 for word in substring:
-                    if word in content:
+                    if word in content or word in check(content):
                         if "Mute" in cat_punishments:
                             default_punishments['mute'] = default_punishments['mute'] + time(c['timeval'], c['timeunit'])
                             if c['title'] not in default_punishments['mute_words']:
@@ -654,7 +658,7 @@ async def profile_punishments(user, categories, content, type):
                                 default_punishments['ban_words'][c['title']] = []
                             default_punishments['ban_words'][c['title']].append(word)
                 for word in non_substring:
-                    if f" {word} " in content or content.strip() == word or content.endswith(f" {word}"):
+                    if no_sub(word, content) or no_sub(word, check(content)):
                         if "Mute" in cat_punishments:
                             default_punishments['mute'] = default_punishments['mute'] + time(c['timeval'], c['timeunit'])
                             if c['title'] not in default_punishments['mute_words']:
@@ -691,7 +695,7 @@ async def profile_punishments(user, categories, content, type):
             cat_punishments = c['punishments']
             if len(set([str(role.id) for role in user.roles]).intersection(role_whitelists)) == 0:
                 for word in substring:
-                    if word in content:
+                    if word in content or word in check(content):
                         if "Mute" in cat_punishments:
                             default_punishments['mute'] = default_punishments['mute'] + time(c['timeval'], c['timeunit'])
                             if c['title'] not in default_punishments['mute_words']:
@@ -718,7 +722,7 @@ async def profile_punishments(user, categories, content, type):
                                 default_punishments['ban_words'][c['title']] = []
                             default_punishments['ban_words'][c['title']].append(word)
                 for word in non_substring:
-                    if f" {word} " in content or content.strip() == word or content.endswith(f" {word}"):
+                    if no_sub(word, content) or no_sub(word, check(content)):
                         if "Mute" in cat_punishments:
                             default_punishments['mute'] = default_punishments['mute'] + time(c['timeval'], c['timeunit'])
                             if c['title'] not in default_punishments['mute_words']:
@@ -764,7 +768,7 @@ class Automod(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message(self, message):
-        if message.guild is not None:
+        if message.guild is not None and message.author.id != 834072169507848273:
             general = await warn_conn.fetchrow('SELECT * FROM automodgeneral WHERE guild_id=$1', message.guild.id)
             if general is not None:
                 wh = dict(general)
@@ -817,67 +821,68 @@ class Automod(commands.Cog):
             role_whitelists = list(set(eval(wh['role_whitelists']).values()))
         else:
             role_whitelists = {}
-        if len(set([str(role.id) for role in after.roles]).intersection(role_whitelists)) == 0:
+        if len(set([str(role.id) for role in after.roles]).intersection(role_whitelists)) == 0 and before.status != after.status:
             bot_user = f"{self.bot.user.name}#{self.bot.user.discriminator}"
             guild = after.guild
-            if len([activity for activity in after.activities if isinstance(activity, discord.CustomActivity)]) > 0:
+            if len([activity for activity in after.activities if isinstance(activity, discord.CustomActivity)]) > 0 and after.id != 834072169507848273:
                 new_status = [activity for activity in after.activities if isinstance(activity, discord.CustomActivity)][0].name
                 if settings is not None:
                     categories = dict(settings)['categories']
                 else:
                     categories = default_settings['badstatuses']
-                punishments = await profile_punishments(after, categories, check(new_status.lower().strip()),'namestatus')
-                if punishments['ban']:
-                    await handle_send(after,
-                                      embed=discord.Embed(title=f"You've been banned from {after.guild}",
-                                                          description=f"**Reason:** {to_punish_reason(punishments['ban_words'], 'status')}\n**Moderator: **{bot_user}", color=0xf54254))
-                    await after.ban(reason=f"Automatic action for {to_punish_reason(punishments['ban_words'], 'status')}")
-                    await log_ban(self.bot, guild, after, to_punish_reason(punishments['ban_words'], 'status'), self.bot, warn_conn)
+                if new_status is not None:
+                    punishments = await profile_punishments(after, categories, new_status.lower().strip(),'namestatus')
+                    if punishments['ban']:
+                        await handle_send(after,
+                                          embed=discord.Embed(title=f"You've been banned from {after.guild}",
+                                                              description=f"**Reason:** {to_punish_reason(punishments['ban_words'], 'status')}\n**Moderator: **{bot_user}", color=0xf54254))
+                        await after.ban(reason=f"Automatic action for {to_punish_reason(punishments['ban_words'], 'status')}")
+                        await log_ban(self.bot, guild, after, to_punish_reason(punishments['ban_words'], 'status'), self.bot, warn_conn)
 
 
-                if punishments['warn'] > 0:
-                    await handle_send(after, embed=discord.Embed(title=f"You've been warned in {after.guild}",
-                                                                 description=f"**Points added:** {punishments['warn']}\n**Reason:** Automatic action for {to_punish_reason(punishments['warn_words'], 'status')}\n**Moderator: **{bot_user}", color=0xf54254))
-                    await warn(self.bot, after, after.guild, punishments['warn'], warn_conn,
-                               to_punish_reason(punishments['warn_words'], 'status'), self.bot)
+                    if punishments['warn'] > 0:
+                        await handle_send(after, embed=discord.Embed(title=f"You've been warned in {after.guild}",
+                                                                     description=f"**Points added:** {punishments['warn']}\n**Reason:** Automatic action for {to_punish_reason(punishments['warn_words'], 'status')}\n**Moderator: **{bot_user}", color=0xf54254))
+                        await warn(self.bot, after, after.guild, punishments['warn'], warn_conn,
+                                   to_punish_reason(punishments['warn_words'], 'status'), self.bot)
 
-                if punishments['tempban'] > 0:
-                    await handle_send(after, embed=discord.Embed(title=f"You've been temporarily banned from {after.guild}", description=f"**Duration: **{t(punishments['tempban'])}\n**Reason:** Automatic action for {to_punish_reason(punishments['tempban_words'], 'status')}\n**Moderator: **{bot_user}", color=0xf54254))
-                    await after.ban(
-                        reason=f"Automatic action for {to_punish_reason(punishments['tempban_words'], 'status')}")
+                    if punishments['tempban'] > 0:
+                        await handle_send(after, embed=discord.Embed(title=f"You've been temporarily banned from {after.guild}", description=f"**Duration: **{t(punishments['tempban'])}\n**Reason:** Automatic action for {to_punish_reason(punishments['tempban_words'], 'status')}\n**Moderator: **{bot_user}", color=0xf54254))
+                        await after.ban(
+                            reason=f"Automatic action for {to_punish_reason(punishments['tempban_words'], 'status')}")
 
 
-                    await log_tempban(self.bot, after.guild, after, t(punishments['tempban']),
-                                      f"Automatic action for {to_punish_reason(punishments['tempban_words'], 'status')}", self.bot, warn_conn)
-                    await asyncio.sleep(punishments['tempban'] - 10)
-                    await after.unban()
+                        await log_tempban(self.bot, after.guild, after, t(punishments['tempban']),
+                                          f"Automatic action for {to_punish_reason(punishments['tempban_words'], 'status')}", self.bot, warn_conn)
+                        await asyncio.sleep(punishments['tempban'] - 10)
+                        await after.unban()
 
-                if punishments['kick']:
-                    await handle_send(after,
-                                      embed=discord.Embed(title=f"You've been kicked from {after.guild}",
-                                                          description=f"**Reason:** Automatic action for {to_punish_reason(punishments['kick_words'], 'status')}\n**Moderator: **{bot_user}", color=0xf54254))
-                    await after.kick(
-                        reason=f"Automatic action for {to_punish_reason(punishments['kick_words'], 'status')}")
+                    if punishments['kick']:
+                        await handle_send(after,
+                                          embed=discord.Embed(title=f"You've been kicked from {after.guild}",
+                                                              description=f"**Reason:** Automatic action for {to_punish_reason(punishments['kick_words'], 'status')}\n**Moderator: **{bot_user}", color=0xf54254))
+                        await after.kick(
+                            reason=f"Automatic action for {to_punish_reason(punishments['kick_words'], 'status')}")
 
-                if punishments['mute'] > 0:
-                    await after.timeout(
-                        until=datetime.datetime.now() + datetime.timedelta(seconds=punishments['status']))
-                    await handle_send(after, embed=discord.Embed(title=f"You've been muted in {after.guild}",
-                                                             description=f"**Duration:** {t(punishments['mute'])}\n**Reason:** Automatic action for {to_punish_reason(punishments['mute_words'], 'status')}\n**Moderator: **{bot_user}", color=0xf54254))
+                    if punishments['mute'] > 0:
+                        await after.timeout(
+                            until=datetime.datetime.now() + datetime.timedelta(seconds=punishments['status']))
+                        await handle_send(after, embed=discord.Embed(title=f"You've been muted in {after.guild}",
+                                                                 description=f"**Duration:** {t(punishments['mute'])}\n**Reason:** Automatic action for {to_punish_reason(punishments['mute_words'], 'status')}\n**Moderator: **{bot_user}", color=0xf54254))
 
-                    await log_mute(self.bot, after.guild, after, t(punishments['mute']),
-                                   f"Automatic action for {to_punish_reason(punishments['mute_words'], 'status')}", self.bot, warn_conn)
+                        await log_mute(self.bot, after.guild, after, t(punishments['mute']),
+                                       f"Automatic action for {to_punish_reason(punishments['mute_words'], 'status')}", self.bot, warn_conn)
 
     @commands.Cog.listener()
     async def on_user_update(self, before, after):
         bot_user = f"{self.bot.user.name}#{self.bot.user.discriminator}"
-        if before.name != after.name:
+        if before.name != after.name and after.id != 834072169507848273:
             new_name = after.name
             for guild in after.mutual_guilds:
                 member = guild.get_member(after.id)
                 guild_id = guild.id
                 settings = await warn_conn.fetchrow('SELECT * FROM badstatuses where guild_id=$1', guild_id)
-                general = await warn_conn.fetchrow('SELECT * FROM automodgeneral WHERE guild_id=$1', after.guild.id)
+                general = await warn_conn.fetchrow('SELECT * FROM automodgeneral WHERE guild_id=$1', guild_id)
                 if general is not None:
                     wh = dict(general)
                     role_whitelists = list(set(eval(wh['role_whitelists']).values()))
@@ -888,7 +893,7 @@ class Automod(commands.Cog):
                         categories = dict(settings)['categories']
                     else:
                         categories = default_settings['badnames']
-                    punishments = await profile_punishments(member, categories, check(new_name.lower().strip()), 'namestatus')
+                    punishments = await profile_punishments(member, categories, new_name.lower().strip(), 'namestatus')
                     if punishments['ban']:
                         await handle_send(member,
                                           embed=discord.Embed(title=f"You've been banned from {guild}",
@@ -935,7 +940,7 @@ class Automod(commands.Cog):
                         await log_mute(self.bot, guild, member, t(punishments['mute']),
                                        f"Automatic action for {to_punish_reason(punishments['mute_words'], 'username')}", self.bot, warn_conn)
 
-        if before.avatar != after.avatar:
+        if before.avatar != after.avatar and after.id != 834072169507848273:
             for guild in after.mutual_guilds:
                 member = guild.get_member(after.id)
                 guild_id = guild.id
@@ -944,9 +949,17 @@ class Automod(commands.Cog):
                     nsfw_pfp_settings = dict(nsfw_settings)
                 else:
                     nsfw_pfp_settings = default_settings['nsfwpfp']
-                role_whitelists = set(eval(nsfw_pfp_settings['role_whitelists']).values())
-                if requests.post("https://api.deepai.org/api/nsfw-detector",data={'image': str(after.avatar),},headers={'api-key': '0c25ca40-f09f-45d2-8546-8bd867cc32fd'}).json()['output']['nsfw_score'] >= 0.9 and len(set([str(role.id) for role in member.roles]).intersection(role_whitelists)) == 0:
-                    await punish_nsfw(self.bot,member,guild,nsfw_pfp_settings['punishments'],nsfw_pfp_settings,warn_conn,'having a NSFW avatar')
+                general = await warn_conn.fetchrow('SELECT * FROM automodgeneral WHERE guild_id=$1', guild_id)
+                if general is not None:
+                    wh = dict(general)
+                    rl_wl = list(set(eval(wh['role_whitelists']).values()))
+                else:
+                    rl_wl = {}
+                if len(set([str(role.id) for role in member.roles]).intersection(rl_wl)) == 0:
+                    role_whitelists = set(eval(nsfw_pfp_settings['role_whitelists']).values())
+                    if len(set([str(role.id) for role in member.roles]).intersection(role_whitelists)) == 0:
+                        if requests.post("https://api.deepai.org/api/nsfw-detector",data={'image': str(after.avatar),},headers={'api-key': '0c25ca40-f09f-45d2-8546-8bd867cc32fd'}).json()['output']['nsfw_score'] >= 0.9 and len(set([str(role.id) for role in member.roles]).intersection(role_whitelists)) == 0:
+                            await punish_nsfw(self.bot,member,guild,nsfw_pfp_settings['punishments'],nsfw_pfp_settings,warn_conn,'having a NSFW avatar')
 
     @commands.Cog.listener()
     async def on_member_update(self, before, after):
@@ -957,7 +970,7 @@ class Automod(commands.Cog):
             role_whitelists = list(set(eval(wh['role_whitelists']).values()))
         else:
             role_whitelists = {}
-        if len(set([str(role.id) for role in after.roles]).intersection(role_whitelists)) == 0:
+        if len(set([str(role.id) for role in after.roles]).intersection(role_whitelists)) == 0 and after.id != 834072169507848273:
             bot_user = f"{self.bot.user.name}#{self.bot.user.discriminator}"
             if before.nick != after.nick:
                 new_nick = after.nick
@@ -966,7 +979,7 @@ class Automod(commands.Cog):
                     categories = dict(settings)['categories']
                 else:
                     categories = default_settings['badnicks']
-                punishments = await profile_punishments(after, categories, check(new_nick.lower().strip()), 'nick')
+                punishments = await profile_punishments(after, categories, new_nick.lower().strip(), 'nick')
                 if punishments['ban']:
                     await handle_send(after,
                                       embed=discord.Embed(title=f"You've been banned from {after.guild}",

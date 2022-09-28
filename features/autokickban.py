@@ -5,6 +5,7 @@ import requests
 from features.punishing import log_ban
 import asyncpg
 import asyncio
+from features.spellchecking import check
 
 async def handle_send(member, embed):
     try:
@@ -30,7 +31,7 @@ def get_time_in_seconds(time,unit):
 
 
 def not_sub(text, target):
-    return f" {text} " in target or target.strip() == text or target.endswith(f" {text}")
+    return f" {text} " in target or target.strip() == text or target.strip().endswith(f" {text}") or target.strip().startswith(f"{text} ")
 
 
 d = {}
@@ -39,7 +40,7 @@ with open('tk.json','r+') as f:
     info = eval(f.read())['db']
     for key in list(info.keys()):
         d[key] = info[key]
-
+badProfiles = { 'hitler': 'Substring', 'nazi': 'Substring', 'adolf': 'Substring', 'holocaust': 'Substring', 'auschwitz': 'Substring', 'rapist': 'Substring', 'porn': 'Substring', 'molest': 'Substring', 'traffick': 'Substring', 'rape': 'NoSubstring', 'raping': 'NoSubstring', 'pedo': 'Substring', 'paedo': 'Substring', 'sex': 'NoSubstring'}
 
 class AutoKickBan(commands.Cog):
     def __init__(self, bot):
@@ -55,108 +56,113 @@ class AutoKickBan(commands.Cog):
         rules = await conn.fetchrow('SELECT * FROM autokickban WHERE guild_id=$1', guild_id)
         if rules is not None:
             ban_rules = dict(rules)['banrules']
-            global alr_gone
-            alr_gone = False
-            for rule in ban_rules:
-                rule = eval(rule)
-                if rule['type'] == 'accountAge' and not alr_gone:
-                    if (member.joined_at - member.created_at).total_seconds() <= get_time_in_seconds(rule['timeVal'],
-                                                                                                     rule['timeUnit']):
-                        r = f"Auto ban function: account too young, account age is {(member.joined_at - member.created_at).total_seconds()} seconds old, minimum account age is {get_time_in_seconds(rule['timeVal'], rule['timeUnit'])} seconds"
+            kick_rules = dict(rules)['kickrules']
+        else:
+            ban_rules = [str({"type": "nsfwpfp", "timeVal": 24, "timeUnit": "hours", "usernames": {}, "statuses": {}}),str({"type": "username", "timeVal": 24, "timeUnit": "hours", "usernames": badProfiles, "statuses": {}}),str({"type": "status", "timeVal": 24, "timeUnit": "hours", "usernames": {}, "statuses": badProfiles})]
+            kick_rules = [str({"type": "accountAge", "timeVal": 7, "timeUnit": "days", "usernames": {}, "statuses": {}}),str({"type": "promoName", "timeVal": 24, "timeUnit": "hours", "usernames": {}, "statuses": {}})]
+        global alr_gone
+        alr_gone = False
+        print(ban_rules)
+        for rule in ban_rules:
+            rule = eval(rule)
+            if rule['type'] == 'accountAge' and not alr_gone:
+                if (member.joined_at - member.created_at).total_seconds() <= get_time_in_seconds(rule['timeVal'],
+                                                                                                 rule['timeUnit']):
+                    r = f"Auto ban function: account too young, account age is {(member.joined_at - member.created_at).total_seconds()} seconds old, minimum account age is {get_time_in_seconds(rule['timeVal'], rule['timeUnit'])} seconds"
+                    await log_ban(self.bot, member.guild, member, r, self.bot, conn)
+                    await handle_send(member, embed=discord.Embed(title=f"You've been banned from {g}",
+                                                          description=f"**Reason: **{r}\n**Moderator: **{bot_user}", color=0xf54254))
+                    alr_gone = True
+                    await member.ban(reason=r)
+
+
+            if rule['type'] == 'promoName' and not alr_gone:
+                r = f"Auto ban function: invite link in name/status"
+                if bool(re.findall(r'(?:https?://)?discord(?:(?:app)?\.com/invite|\.gg)/?[a-zA-Z0-9]+/?', member.name)):
+                    await log_ban(self.bot, member.guild, member, r, self.bot, conn)
+                    await handle_send(member, embed=discord.Embed(title=f"You've been banned from {g}",
+                                                          description=f"**Reason: **{r}\n**Moderator: **{bot_user}", color=0xf54254))
+                    alr_gone = True
+                    await member.ban(reason=r)
+                if len([activity for activity in member.activities if
+                        isinstance(activity, discord.CustomActivity)]) > 0:
+                    status = [activity for activity in member.activities if isinstance(activity, discord.CustomActivity)][0].name
+                    if bool(re.findall(r'(?:https?://)?discord(?:(?:app)?\.com/invite|\.gg)/?[a-zA-Z0-9]+/?',
+                                       status)):
                         await log_ban(self.bot, member.guild, member, r, self.bot, conn)
                         await handle_send(member, embed=discord.Embed(title=f"You've been banned from {g}",
-                                                              description=f"**Reason: **{r}\n**Moderator: **{bot_user}", color=0xf54254))
+                                                                      description=f"**Reason: **{r}\n**Moderator: **{bot_user}", color=0xf54254))
                         alr_gone = True
                         await member.ban(reason=r)
 
+            if rule['type'] == 'nsfwpfp' and not alr_gone:
+                if requests.post("https://api.deepai.org/api/nsfw-detector", data={'image': str(member.avatar), },
+                                 headers={'api-key': '0c25ca40-f09f-45d2-8546-8bd867cc32fd'}).json()['output'][
+                    'nsfw_score'] >= 0.9:
+                    r = "Auto ban function: NSFW avatar"
+                    await log_ban(self.bot, member.guild, member, r, self.bot, conn)
+                    await handle_send(member, embed=discord.Embed(title=f"You've been banned from {g}",
+                                                          description=f"**Reason: **{r}\n**Moderator: **{bot_user}", color=0xf54254))
+                    await member.ban(reason=r)
 
-                if rule['type'] == 'promoName' and not alr_gone:
-                    r = f"Auto ban function: invite link in name/status"
-                    if bool(re.findall(r'(?:https?://)?discord(?:(?:app)?\.com/invite|\.gg)/?[a-zA-Z0-9]+/?', member.name)):
+                    alr_gone = True
+            if rule['type'] == 'username':
+                no_sub_usernames = [name for name in list(rule['usernames'].keys()) if
+                                    rule['usernames'][name] == 'NoSubstring']
+                sub_usernames = [name for name in list(rule['usernames'].keys()) if
+                                 rule['usernames'][name] == 'Substring']
+                for name in no_sub_usernames:
+                    if (not_sub(name.lower(), check(member.name.lower()).lower()) or not_sub(name.lower(),
+                                                                                             member.name.lower())) and not alr_gone:
+                        r = f"Auto ban function: blacklisted word in name: {name}"
                         await log_ban(self.bot, member.guild, member, r, self.bot, conn)
-                        await handle_send(member, embed=discord.Embed(title=f"You've been banned from {g}",
-                                                              description=f"**Reason: **{r}\n**Moderator: **{bot_user}", color=0xf54254))
                         alr_gone = True
-                        await member.ban(reason=r)
-
-                    if len([activity for activity in member.activities if
-                            isinstance(activity, discord.CustomActivity)]) > 0:
-                        status = [activity for activity in member.activities if isinstance(activity, discord.CustomActivity)][0].name
-                        if bool(re.findall(r'(?:https?://)?discord(?:(?:app)?\.com/invite|\.gg)/?[a-zA-Z0-9]+/?',
-                                           status)):
-                            await log_ban(self.bot, member.guild, member, r, self.bot, conn)
-                            await handle_send(member, embed=discord.Embed(title=f"You've been banned from {g}",
-                                                                          description=f"**Reason: **{r}\n**Moderator: **{bot_user}", color=0xf54254))
-                            alr_gone = True
-                            await member.ban(reason=r)
-
-                if rule['type'] == 'nsfwpfp' and not alr_gone:
-                    if requests.post("https://api.deepai.org/api/nsfw-detector", data={'image': str(member.avatar), },
-                                     headers={'api-key': '0c25ca40-f09f-45d2-8546-8bd867cc32fd'}).json()['output'][
-                        'nsfw_score'] >= 0.9:
-                        r = "Auto ban function: NSFW avatar"
-                        await log_ban(self.bot, member.guild, member, r, self.bot, conn)
                         await handle_send(member, embed=discord.Embed(title=f"You've been banned from {g}",
                                                               description=f"**Reason: **{r}\n**Moderator: **{bot_user}", color=0xf54254))
                         await member.ban(reason=r)
 
+                for name in sub_usernames:
+                    print(check(member.name.lower()).lower())
+                    if (name.lower() in check(member.name.lower()).lower() or name.lower() in member.name.lower()) and not alr_gone:
+                        r = f"Auto ban function: blacklisted word in name: {name}"
+                        await log_ban(self.bot, member.guild, member, r, self.bot, conn)
                         alr_gone = True
-                if rule['type'] == 'username':
-                    no_sub_usernames = [name for name in list(rule['usernames'].keys()) if
-                                        rule['usernames'][name] == 'NoSubstring']
-                    sub_usernames = [name for name in list(rule['usernames'].keys()) if
-                                     rule['usernames'][name] == 'Substring']
-                    for name in no_sub_usernames:
-                        if not_sub(name.lower(), member.name.lower()) and not alr_gone:
-                            r = f"Auto ban function: blacklisted word in name: {name}"
+                        await handle_send(member, embed=discord.Embed(title=f"You've been banned from {g}",
+                                                              description=f"**Reason: **{r}\n**Moderator: **{bot_user}", color=0xf54254))
+                        await member.ban(reason=r)
+
+            if rule['type'] == 'status':
+                if len([activity for activity in member.activities if
+                        isinstance(activity, discord.CustomActivity)]) > 0:
+                    status = \
+                        [activity for activity in member.activities if isinstance(activity, discord.CustomActivity)][
+                            0].name
+                    no_sub_statuses = [name for name in list(rule['statuses'].keys()) if
+                                       rule['statuses'][name] == 'NoSubstring']
+                    sub_statuses = [name for name in list(rule['statuses'].keys()) if
+                                    rule['statuses'][name] == 'Substring']
+
+                    for stt in no_sub_statuses:
+                        if (not_sub(stt.lower(), check(status.lower()).lower()) or not_sub(stt.lower(), status.lower())) and not alr_gone:
+                            r = f"Auto ban function: blacklisted word in status: {stt}"
                             await log_ban(self.bot, member.guild, member, r, self.bot, conn)
                             alr_gone = True
                             await handle_send(member, embed=discord.Embed(title=f"You've been banned from {g}",
                                                                   description=f"**Reason: **{r}\n**Moderator: **{bot_user}", color=0xf54254))
                             await member.ban(reason=r)
 
-                    for name in sub_usernames and not alr_gone:
-                        if name in member.name.lower():
-                            r = f"Auto ban function: blacklisted word in name: {name}"
+                    for stt in sub_statuses:
+                        if (stt.lower() in check(status.lower()).lower() or stt.lower() in status.lower()) and not alr_gone:
+                            r = f"Auto ban function: blacklisted word in status: {stt}"
                             await log_ban(self.bot, member.guild, member, r, self.bot, conn)
                             alr_gone = True
                             await handle_send(member, embed=discord.Embed(title=f"You've been banned from {g}",
                                                                   description=f"**Reason: **{r}\n**Moderator: **{bot_user}", color=0xf54254))
                             await member.ban(reason=r)
-
-                if rule['type'] == 'status':
-                    if len([activity for activity in member.activities if
-                            isinstance(activity, discord.CustomActivity)]) > 0:
-                        status = \
-                            [activity for activity in member.activities if isinstance(activity, discord.CustomActivity)][
-                                0].name
-                        no_sub_statuses = [name for name in list(rule['statuses'].keys()) if
-                                           rule['statuses'][name] == 'NoSubstring']
-                        sub_statuses = [name for name in list(rule['statuses'].keys()) if
-                                        rule['statuses'][name] == 'Substring']
-
-                        for stt in no_sub_statuses:
-                            if not_sub(stt.lower(), status.lower()) and not alr_gone:
-                                r = f"Auto ban function: blacklisted word in status: {stt}"
-                                await log_ban(self.bot, member.guild, member, r, self.bot, conn)
-                                alr_gone = True
-                                await handle_send(member, embed=discord.Embed(title=f"You've been banned from {g}",
-                                                                      description=f"**Reason: **{r}\n**Moderator: **{bot_user}", color=0xf54254))
-                                await member.ban(reason=r)
-
-                        for stt in sub_statuses:
-                            if stt in status.lower() and not alr_gone:
-                                r = f"Auto ban function: blacklisted word in status: {stt}"
-                                await log_ban(self.bot, member.guild, member, r, self.bot, conn)
-                                alr_gone = True
-                                await handle_send(member, embed=discord.Embed(title=f"You've been banned from {g}",
-                                                                      description=f"**Reason: **{r}\n**Moderator: **{bot_user}", color=0xf54254))
-                                await member.ban(reason=r)
 
 
             r = ''
             g = member.guild
-            kick_rules = dict(rules)['kickrules']
             alr_gone = False
             for rule in kick_rules:
                 rule = eval(rule)
@@ -204,7 +210,7 @@ class AutoKickBan(commands.Cog):
                     sub_usernames = [name for name in list(rule['usernames'].keys()) if
                                      rule['usernames'][name] == 'Substring']
                     for name in no_sub_usernames:
-                        if not_sub(name.lower(), member.name.lower()) and not alr_gone:
+                        if (not_sub(name.lower(), check(member.name.lower()).lower()) or not_sub(name.lower(), member.name.lower())) and not alr_gone:
                             r = f"Auto kick function: blacklisted word in name: {name}"
                             alr_gone = True
                             await handle_send(member, embed=discord.Embed(title=f"You've been kicked from {g}",
@@ -212,8 +218,9 @@ class AutoKickBan(commands.Cog):
                             await member.kick(reason=r)
 
                             alr_gone = True
-                    for name in sub_usernames and not alr_gone:
-                        if name in member.name.lower():
+                    for name in sub_usernames:
+                        if (name.lower() in check(
+                                member.name.lower()).lower() or name.lower() in member.name.lower()) and not alr_gone:
                             r = f"Auto kick function: blacklisted word in name: {name}"
                             await member.kick(reason=r)
                             await handle_send(member, embed=discord.Embed(title=f"You've been kicked from {g}",
@@ -232,7 +239,8 @@ class AutoKickBan(commands.Cog):
                                         rule['statuses'][name] == 'Substring']
 
                         for stt in no_sub_statuses:
-                            if not_sub(stt.lower(), status.lower()) and not alr_gone:
+                            if (not_sub(stt.lower(), check(status.lower()).lower()) or not_sub(stt.lower(),
+                                                                                               status.lower())) and not alr_gone:
                                 r = f"Auto kick function: blacklisted word in status: {stt}"
                                 alr_gone = True
                                 await handle_send(member, embed=discord.Embed(title=f"You've been kicked from {g}",
@@ -240,7 +248,7 @@ class AutoKickBan(commands.Cog):
                                 await member.kick(reason=r)
 
                         for stt in sub_statuses:
-                            if stt in status.lower() and not alr_gone:
+                            if (stt.lower() in check(status.lower()).lower() or stt.lower() in check(status.lower())) and not alr_gone:
                                 r = f"Auto kick function: blacklisted word in status: {stt}"
                                 alr_gone = True
                                 await handle_send(member, embed=discord.Embed(title=f"You've been kicked from {g}",
