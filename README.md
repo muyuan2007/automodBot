@@ -1,5 +1,3 @@
-[README.md](https://github.com/user-attachments/files/24510878/README.md)
-
 # Auto Moderator Generation X
 
 Auto Moderator Generation X (AMGX for short), is a **Discord bot** that **automates** a wide variety of tasks relating to keeping online Discord communities (known as "Discord servers") **safe and friendly**. It is currently being used by **191 Discord servers**, consisting of **~56,000 users**, as of the time of writing this.
